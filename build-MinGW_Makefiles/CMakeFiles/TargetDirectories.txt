@@ -1,0 +1,6 @@
+D:/Documents/GitHub/apic2d/build-MinGW_Makefiles/CMakeFiles/DllCopy.dir
+D:/Documents/GitHub/apic2d/build-MinGW_Makefiles/CMakeFiles/edit_cache.dir
+D:/Documents/GitHub/apic2d/build-MinGW_Makefiles/CMakeFiles/rebuild_cache.dir
+D:/Documents/GitHub/apic2d/build-MinGW_Makefiles/apic2d/CMakeFiles/APIC2D.dir
+D:/Documents/GitHub/apic2d/build-MinGW_Makefiles/apic2d/CMakeFiles/edit_cache.dir
+D:/Documents/GitHub/apic2d/build-MinGW_Makefiles/apic2d/CMakeFiles/rebuild_cache.dir

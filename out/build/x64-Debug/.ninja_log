@@ -1,0 +1,12 @@
+# ninja log v5
+37	217	0	CMakeFiles/DllCopy	efe4f66290dcf1d3
+215	3513	7521503502594023	apic2d/CMakeFiles/APIC2D.dir/gluvi.cpp.obj	b77c6b5a5c57cbe7
+260	4975	7521503517071171	apic2d/CMakeFiles/APIC2D.dir/sorter.cpp.obj	e55551759ce47625
+37	217	0	D:/Documents/GitHub/apic2d/out/build/x64-Debug/CMakeFiles/DllCopy	efe4f66290dcf1d3
+227	2694	7521503494312708	apic2d/CMakeFiles/APIC2D.dir/kernel.cpp.obj	c879ba2013090b1f
+238	5194	7521503519327696	apic2d/CMakeFiles/APIC2D.dir/main.cpp.obj	46916b4b500034ac
+249	3776	7521503505180515	apic2d/CMakeFiles/APIC2D.dir/openglutils.cpp.obj	f2d01492caceb0a7
+205	7391	7521503541238494	apic2d/CMakeFiles/APIC2D.dir/fluidsim.cpp.obj	2eda78e49461b840
+7392	8219	7521503549330994	apic2d/APIC2D.exe	e8118b8cd6eb431e
+10	172	0	CMakeFiles/DllCopy	efe4f66290dcf1d3
+10	172	0	D:/Documents/GitHub/apic2d/out/build/x64-Debug/CMakeFiles/DllCopy	efe4f66290dcf1d3

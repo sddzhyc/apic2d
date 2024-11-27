@@ -1,0 +1,3 @@
+D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/CMakeFiles/thirdparty-populate.dir
+D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/CMakeFiles/edit_cache.dir
+D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/CMakeFiles/rebuild_cache.dir

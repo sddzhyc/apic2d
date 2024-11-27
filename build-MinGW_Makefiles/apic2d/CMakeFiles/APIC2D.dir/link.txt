@@ -1,0 +1,3 @@
+D:\softwares\cmake-3.20.2-windows-x86_64\bin\cmake.exe -E rm -f CMakeFiles\APIC2D.dir/objects.a
+D:\softwares\MinGW\bin\ar.exe cr CMakeFiles\APIC2D.dir/objects.a @CMakeFiles\APIC2D.dir\objects1.rsp
+D:\softwares\MinGW\bin\g++.exe  -ffast-math -O3 -march=native -O3 -DNDEBUG -Wl,--whole-archive CMakeFiles\APIC2D.dir/objects.a -Wl,--no-whole-archive -o APIC2D.exe -Wl,--out-implib,libAPIC2D.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\APIC2D.dir\linklibs.rsp

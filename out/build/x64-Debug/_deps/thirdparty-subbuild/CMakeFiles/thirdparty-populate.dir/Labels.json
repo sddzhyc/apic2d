@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/CMakeFiles/thirdparty-populate"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/CMakeFiles/thirdparty-populate.rule"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/CMakeFiles/thirdparty-populate-complete.rule"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/thirdparty-populate-prefix/src/thirdparty-populate-stamp/thirdparty-populate-build.rule"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/thirdparty-populate-prefix/src/thirdparty-populate-stamp/thirdparty-populate-configure.rule"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/thirdparty-populate-prefix/src/thirdparty-populate-stamp/thirdparty-populate-download.rule"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/thirdparty-populate-prefix/src/thirdparty-populate-stamp/thirdparty-populate-install.rule"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/thirdparty-populate-prefix/src/thirdparty-populate-stamp/thirdparty-populate-mkdir.rule"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/thirdparty-populate-prefix/src/thirdparty-populate-stamp/thirdparty-populate-patch.rule"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/thirdparty-populate-prefix/src/thirdparty-populate-stamp/thirdparty-populate-test.rule"
+		},
+		{
+			"file" : "D:/Documents/GitHub/apic2d/out/build/x64-Debug/_deps/thirdparty-subbuild/thirdparty-populate-prefix/src/thirdparty-populate-stamp/thirdparty-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"thirdparty-populate"
+		],
+		"name" : "thirdparty-populate"
+	}
+}

@@ -41,6 +41,8 @@ struct Particle {
   scalar radii_;
   scalar mass_;
   scalar logJ_;
+
+  scalar density_;
 };
 
 class FluidSim {

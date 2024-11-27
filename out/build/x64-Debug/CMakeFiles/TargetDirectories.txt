@@ -1,0 +1,6 @@
+D:/Documents/GitHub/apic2d/out/build/x64-Debug/CMakeFiles/DllCopy.dir
+D:/Documents/GitHub/apic2d/out/build/x64-Debug/CMakeFiles/edit_cache.dir
+D:/Documents/GitHub/apic2d/out/build/x64-Debug/CMakeFiles/rebuild_cache.dir
+D:/Documents/GitHub/apic2d/out/build/x64-Debug/apic2d/CMakeFiles/APIC2D.dir
+D:/Documents/GitHub/apic2d/out/build/x64-Debug/apic2d/CMakeFiles/edit_cache.dir
+D:/Documents/GitHub/apic2d/out/build/x64-Debug/apic2d/CMakeFiles/rebuild_cache.dir

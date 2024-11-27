@@ -39,7 +39,8 @@
 // IT_APIC: affine particle-in-cell (APIC)
 // IT_AFLIP: affine fluid-implicit-particle (AFLIP)
 // IT_ASFLIP: affine separable fluid-implicit-particle (ASFLIP)
-const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_APIC;
+//const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_APIC;
+const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_FLIP;
 
 // Change here to try different order for velocity evaluation from grid,
 // options:
@@ -188,16 +189,16 @@ void FluidSim::advance(scalar dt) {
 
   tick();
   add_force(dt);
-  tock("add force");
+  tock("add force"); //加重力
 
   tick();
   compute_liquid_distance();
-  tock("compute phi");
+  tock("compute phi"); // ??
 
   // Compute finite-volume type_ face area weight for each velocity sample.
   tick();
   compute_weights();
-  tock("compute weights");
+  tock("compute weights"); //求level set
 
   // Set up and solve the variational pressure solve.
   tick();
@@ -844,7 +845,7 @@ void FluidSim::map_p2g_linear() {
         m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) {
           for (const Particle* p : neighbors) {
             scalar w = p->mass_ * kernel::linear_kernel(p->x_ - pos, dx_);
-            sumu += w * (p->v_(0) + p->c_.col(0).dot(pos - p->x_));
+            sumu += w * (p->v_(0) + p->c_.col(0).dot(pos - p->x_));  // p->c ？？
             sumw += w;
           }
         });
@@ -1035,17 +1036,18 @@ FluidSim::Boundary::Boundary(const Vector2s& center, const Vector2s& parameter, 
 FluidSim::Boundary::Boundary(Boundary* op0, Boundary* op1, BOUNDARY_TYPE type) : op0_(op0), op1_(op1), type_(type), sign_(op0 ? op0->sign_ : false) {}
 
 Particle::Particle(const Vector2s& x, const Vector2s& v, const scalar& radii, const scalar& density)
-    : x_(x), v_(v), radii_(radii), mass_(4.0 / 3.0 * M_PI * radii * radii * radii * density), logJ_(0) {
+    : x_(x), v_(v), radii_(radii), mass_(4.0 / 3.0 * M_PI * radii * radii * radii * density), logJ_(0)
+    , density_(density) {
   c_.setZero();
   buf0_.setZero();
 }
 
-Particle::Particle() : x_(Vector2s::Zero()), v_(Vector2s::Zero()), radii_(0.0), mass_(0.0), logJ_(0.0) {
+Particle::Particle() : x_(Vector2s::Zero()), v_(Vector2s::Zero()), radii_(0.0), mass_(0.0), logJ_(0.0), density_(0.0) {
   c_.setZero();
   buf0_.setZero();
 }
 
-Particle::Particle(const Particle& p) : x_(p.x_), v_(p.v_), radii_(p.radii_), mass_(p.mass_), logJ_(0.0) {
+Particle::Particle(const Particle& p) : x_(p.x_), v_(p.v_), radii_(p.radii_), mass_(p.mass_), logJ_(0.0), density_(p.density_) {
   c_.setZero();
   buf0_.setZero();
 }

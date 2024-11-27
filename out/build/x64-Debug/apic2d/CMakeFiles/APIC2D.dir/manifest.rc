@@ -1,0 +1,2 @@
+#pragma code_page(65001)
+1 /* CREATEPROCESS_MANIFEST_RESOURCE_ID */ 24 /* RT_MANIFEST */ "D:/Documents/GitHub/apic2d/out/build/x64-Debug/apic2d/CMakeFiles/APIC2D.dir/embed.manifest"
