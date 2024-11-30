@@ -104,6 +104,15 @@ int main(int argc, char **argv) {
 
 void display(void) { sim.render(); }
 
+void specialKeys(int key, int x, int y) {
+  if (key == GLUT_KEY_F1) {
+    sim.OutputPointDataBgeo("D:/FluidSimulator/new_apic2d/point/pointData", sim.outframe_);
+    sim.OutputGridXDataBgeo("D:/FluidSimulator/new_apic2d/gridX/gridXData", sim.outframe_);
+    sim.OutputGridYDataBgeo("D:/FluidSimulator/new_apic2d/gridY/gridYData", sim.outframe_);
+    sim.OutputGridDataBgeo("D:/FluidSimulator/new_apic2d/grid/gridData", sim.outframe_++);
+  }
+}
+
 void timer(int junk) {
   glutPostRedisplay();
   glutTimerFunc(static_cast<int>(ceil(frame_time * 1000.0)), timer, 0);
@@ -112,4 +121,6 @@ void timer(int junk) {
   scalar timestep = frame_time / static_cast<scalar>(num_substeps);
 
   for (int i = 0; i < num_substeps; ++i) sim.advance(timestep);
+
+  glutSpecialFunc(specialKeys);
 }

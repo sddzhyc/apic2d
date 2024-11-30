@@ -16,6 +16,8 @@
 #ifndef APIC2D_FLUIDSIM_H_
 #define APIC2D_FLUIDSIM_H_
 
+#define COMPRESSIBLE_FLUID
+
 #include <chrono>
 #include <memory>
 #include <vector>
@@ -24,6 +26,8 @@
 #include "math_defs.h"
 #include "sparse_matrix.h"
 #include "pcg_solver.h"
+
+#include "Partio.h"
 
 class sorter;
 
@@ -38,11 +42,11 @@ struct Particle {
 
   Vector2s buf0_;
 
+  scalar dens_;
+  
   scalar radii_;
   scalar mass_;
   scalar logJ_;
-
-  scalar density_;
 };
 
 class FluidSim {
@@ -54,6 +58,7 @@ class FluidSim {
   virtual ~FluidSim();
 
   scalar rho_;
+  int outframe_;
 
   enum INTEGRATOR_TYPE {
     IT_PIC,
@@ -136,6 +141,9 @@ class FluidSim {
 
   /*! Quadratic interpolation kernels */
   Vector2s get_velocity_quadratic_impl(const Vector2s& position, const Array2s& uu, const Array2s& vv);
+
+  scalar get_mass_quadratic(const Vector2s& position, const Array2s& density);  // grid to particle时插值粒子的质量
+
   Matrix2s get_affine_matrix_quadratic_impl(const Vector2s& position, const Array2s& uu, const Array2s& vv);
   Vector2s get_velocity_quadratic(const Vector2s& position);
   Matrix2s get_affine_matrix_quadratic(const Vector2s& position);
@@ -168,6 +176,19 @@ class FluidSim {
 
   void paint_velocity(const Vector2s& brush_center, const scalar brush_radius, const Vector2s& vel);
   const Vector2s& get_origin() const { return origin_; }
+
+  /*! Compressible fluid operations */
+  void map_p2g_compressible();
+  scalar get_density(const Vector2s& position);
+  scalar get_saved_density(const Vector2s& position);
+  
+
+
+  /*! Output data bgeo */
+  void OutputPointDataBgeo(const std::string& s, const int frame);
+  void OutputGridDataBgeo(const std::string& s, const int frame);
+  void OutputGridXDataBgeo(const std::string& s, const int frame);
+  void OutputGridYDataBgeo(const std::string& s, const int frame);
 
  protected:
   inline scalar circle_distance(const Vector2s& position, const Vector2s& centre, scalar radius) const { return ((position - centre).norm() - radius); }
@@ -235,6 +256,11 @@ class FluidSim {
 
   void constrain_velocity();
 
+  // compressible fluid operations
+  scalar compute_coef_A(const scalar& rho);
+  scalar compute_coef_B(const scalar& rho);
+  void solve_compressible_density(scalar dt);
+
  private:
   /*! Boundaries */
   std::unique_ptr<Boundary> root_boundary_;
@@ -251,6 +277,8 @@ class FluidSim {
   Array2s temp_u_, temp_v_;
   Array2s saved_u_, saved_v_;
 
+  Array2s density_;
+
   /*! Tracer particles */
   std::vector<Particle> particles_;
 
@@ -263,6 +291,11 @@ class FluidSim {
   Array2c valid_, old_valid_;
   Array2c u_valid_, v_valid_;
 
+  /*! compressible fluid */
+  Array2s comp_rho_;
+  Array2s saved_comp_rho_;
+  scalar a, b, R;
+
   sorter* m_sorter_;
 
   /*! Solver data */
@@ -270,7 +303,9 @@ class FluidSim {
   robertbridson::SparseMatrix<scalar> matrix_;
   std::vector<scalar> rhs_;
   std::vector<scalar> pressure_;
+  std::vector<scalar> comp_rho_solution_;
 
+  //std::vector<scalar> density_;
   bool draw_grid_;
   bool draw_particles_;
   bool draw_velocities_;
