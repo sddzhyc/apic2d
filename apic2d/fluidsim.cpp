@@ -1312,7 +1312,7 @@ void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
   std::cout << "Writing to: " << file << std::endl;
 
   Partio::ParticlesDataMutable* parts = Partio::create();
-  Partio::ParticleAttribute pos, rho;
+  Partio::ParticleAttribute pos, rho, press, lapP;
   pos = parts->addAttribute("position", Partio::VECTOR, 3);
   rho = parts->addAttribute("rho", Partio::FLOAT, 1);
 
@@ -1466,6 +1466,7 @@ void FluidSim::solve_compressible_density(scalar dt) {
           matrix_.add_to_element(index, index, diagonal_add_element / theta);
         }
         rhs_[index] += v_weights_(i, j) *(density_(i, j + 1) - density_(i, j - 1))* v_(i, j) / dx_;
+					rhs_[index] += comp_rho_(i,j); // why?
       }
     }
   });
