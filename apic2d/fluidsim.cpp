@@ -39,7 +39,6 @@
 // IT_APIC: affine particle-in-cell (APIC)
 // IT_AFLIP: affine fluid-implicit-particle (AFLIP)
 // IT_ASFLIP: affine separable fluid-implicit-particle (ASFLIP)
-// const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_APIC;
 const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_FLIP;
 
 // Change here to try different order for velocity evaluation from grid,
@@ -105,6 +104,10 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   // compressible fluid
   comp_rho_.resize(ni_, nj_);
   saved_comp_rho_.resize(ni_, nj_);
+  comp_pressure_.resize(ni_, nj_); // 需要初始化其大小？
+
+  // debug arrays
+  laplacianP_.resize(ni_,nj_);
 
   // hardcode parameters
   R = 461.5;
@@ -216,8 +219,11 @@ void FluidSim::advance(scalar dt) {
 
   // Set up and solve the variational pressure solve.
   tick();
-  //solve_pressure(dt);
+#ifdef COMPRESSIBLE_FLUID
   solve_compressible_density(dt); //启用不可压缩求解
+#else
+  solve_pressure(dt);
+#endif
   tock("solve pressure");
 
   // Pressure projection only produces valid velocities in faces with non-zero
@@ -298,7 +304,7 @@ void FluidSim::add_force(scalar dt) {
   // gravity
   for (int j = 0; j < nj_ + 1; ++j) {
     for (int i = 0; i < ni_; ++i) {
-      v_(i, j) += -981.0 * dt;
+      v_(i, j) += -9.810 * dt; //减少重力加速度？
     }
   }
 
@@ -400,7 +406,7 @@ void FluidSim::constrain_velocity() {
         if (v_weights_(i, j) == 0) {
           v_(i, j) = temp_v_(i, j);
         }
-      }
+      }    
     }
   });
 }
@@ -489,26 +495,6 @@ Vector2s FluidSim::get_velocity_quadratic_impl(const Vector2s& position, const A
     }
   }
 
-  return ret;
-}
-
-scalar FluidSim::get_mass_quadratic(const Vector2s& position, const Array2s& density) {
-  Vector2s p = (position - origin_) / dx_;
-  Vector2s p0 = p - Vector2s(0, 0.5);
-  // Vector2s p1 = p - Vector2s(0.5, 0); //TODO: ??
-  // Vector2s p0 = p - Vector2s(0.5, 0.5);
-  scalar ret = 0;
-  Vector2i ip0 = Vector2i(static_cast<int>(p0(0)), static_cast<int>(p0(1)));
-  for (int i = ip0(0) - 1; i <= ip0(0) + 2; ++i) {  // 只遍历相邻的格点
-    for (int j = ip0(1) - 1; j <= ip0(1) + 2; ++j) {
-      if (i < 0 || i > ni_ || j < 0 || j >= nj_) {
-        continue;
-      }
-      Vector2s pos = Vector2s(i * dx_, (j + 0.5) * dx_) + origin_;
-      scalar w = kernel::quadratic_kernel(position - pos, dx_);
-      ret += density(i, j) * dx_ * dx_ * w;
-    }
-  }
   return ret;
 }
 
@@ -815,7 +801,7 @@ void FluidSim::solve_pressure(scalar dt) {
           u_(i, j) = 0;
           u_valid_(i, j) = 0;
         }
-      }
+      }    
     }
     if (j >= 1 && j < v_.nj - 1) {
       for (int i = 0; i < v_.ni; ++i) {
@@ -941,7 +927,6 @@ void FluidSim::map_p2g_quadratic() {
         });
 
         u_(i, j) = sumw > 0.0 ? sumu / sumw : 0.0;
-        density_(i, j) = sumw > 0.0 ? sumw / (dx_ * dx_) : 0.0;  // 网格cell内的密度不能为0？
       }
     }
 
@@ -963,55 +948,57 @@ void FluidSim::map_p2g_quadratic() {
 }
 
 void FluidSim::map_p2g_compressible() {
-  // u-component of momentum
-  parallel_for(0, nj_ + 1, [this](int j) {
-    if (j < nj_) {
-      for (int i = 0; i < ni_ + 1; ++i) {
-        Vector2s pos = Vector2s(i * dx_, (j + 0.5) * dx_) + origin_;
-        scalar sumw = 0.0;
-        scalar sumu = 0.0;
-        m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) {
-          for (const Particle* p : neighbors) {
-            scalar w = p->mass_ * kernel::linear_kernel(p->x_ - pos, dx_);
-            sumu += w * (p->v_(0) + p->c_.col(0).dot(pos - p->x_));
-            sumw += w;
-          }
-        });
-        u_(i, j) = sumw ? sumu / sumw : 0.0;
-      }
-    }
-
-    for (int i = 0; i < ni_; ++i) {
-      Vector2s pos = Vector2s((i + 0.5) * dx_, j * dx_) + origin_;
-      scalar sumw = 0.0;
-      scalar sumu = 0.0;
-      m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 0, [&](const NeighborParticlesType& neighbors) {
-        for (const Particle* p : neighbors) {
-          scalar w = p->mass_ * kernel::linear_kernel(p->x_ - pos, dx_);
-          sumu += w * (p->v_(1) + p->c_.col(1).dot(pos - p->x_));
-          sumw += w;
+    // u-component of momentum
+    parallel_for(0, nj_ + 1, [this](int j) {
+        if (j < nj_) {
+            for (int i = 0; i < ni_ + 1; ++i) {
+                Vector2s pos = Vector2s(i * dx_, (j + 0.5) * dx_) + origin_;
+                scalar sumw = 0.0;
+                scalar sumu = 0.0;
+                m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) {
+                    for (const Particle* p : neighbors) {
+                        scalar w = p->mass_ * kernel::linear_kernel(p->x_ - pos, dx_);
+                        sumu += w * (p->v_(0) + p->c_.col(0).dot(pos - p->x_));
+                        sumw += w;
+                    }
+                });
+                u_(i, j) = sumw ? sumu / sumw : 0.0;
+            }
         }
-      });
-      v_(i, j) = sumw ? sumu / sumw : 0.0;
-    }
 
-    // rho
-    if (j < nj_) {
-      for (int i = 0; i < ni_; ++i) {
-        Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;
-        scalar sumw = 0.0;
-        scalar sumrho = 0.0;
-        m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) {
-          for (const Particle* p : neighbors) {
-            scalar w = kernel::linear_kernel(p->x_ - pos, dx_);
-            sumw += w;
-            sumrho += p->dens_ * w;
-          }
-        });
-        comp_rho_(i, j) = sumw ? sumrho / sumw : 0.0;  // TODO: 添加体积元不同带来的密度变化？
-      }
-    }
-  });
+        for (int i = 0; i < ni_; ++i) {
+            Vector2s pos = Vector2s((i + 0.5) * dx_, j * dx_) + origin_;
+            scalar sumw = 0.0;
+            scalar sumu = 0.0;
+            m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 0, [&](const NeighborParticlesType& neighbors) {
+                    for (const Particle* p : neighbors) {
+                        scalar w = p->mass_ * kernel::linear_kernel(p->x_ - pos, dx_);
+                        sumu += w * (p->v_(1) + p->c_.col(1).dot(pos - p->x_));
+                        sumw += w;
+                    }
+            });
+            v_(i, j) = sumw ? sumu / sumw : 0.0;
+        }
+
+        // rho
+        if (j < nj_) {
+            for (int i = 0; i < ni_; ++i) {
+                Vector2s pos = Vector2s((i+0.5) * dx_, (j+0.5) * dx_) + origin_;
+                scalar sumw = 0.0;
+                scalar sumrho = 0.0;
+                m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) {
+                    for (const Particle* p : neighbors) {
+                        scalar w = kernel::linear_kernel(p->x_ - pos, dx_);
+                        sumw += w;
+                        sumrho += p->dens_* w;
+                    }
+                });
+                comp_rho_(i,j) = sumw ? sumrho / sumw : 0.0;// TODO: 添加体积元不同带来的密度变化？
+            }
+        }
+    });
+
+    
 }
 
 /*!
@@ -1020,65 +1007,60 @@ void FluidSim::map_p2g_compressible() {
 */
 void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, const scalar lagrangian_symplecticity, const scalar affine_stretching_ratio,
                                     const scalar affine_rotational_ratio) {
-  bool use_affine = affine_stretching_ratio > 0. || affine_rotational_ratio > 0.;
-  parallel_for(0, static_cast<int>(particles_.size()), [&](int i) {
-    auto& p = particles_[i];
+    bool use_affine = affine_stretching_ratio > 0. || affine_rotational_ratio > 0.;
+    parallel_for(0, static_cast<int>(particles_.size()), [&](int i) {
+        auto& p = particles_[i];
 
     Matrix2s C = Matrix2s::Zero();  // APIC使用
-    Vector2s next_grid_velocity = get_velocity_and_affine_matrix_with_order(p.x_, dt, velocity_order, interpolation_order, use_affine ? (&C) : nullptr);
-    Vector2s lagrangian_velocity = p.v_;
-    Vector2s original_grid_velocity;
+        Vector2s next_grid_velocity = get_velocity_and_affine_matrix_with_order(p.x_, dt, velocity_order, interpolation_order, use_affine ? (&C) : nullptr);
+        Vector2s lagrangian_velocity = p.v_;
+        Vector2s original_grid_velocity;
 
-    if (lagrangian_ratio > 0.0) {
-      original_grid_velocity = get_saved_velocity_with_order(p.x_, interpolation_order);
+        if (lagrangian_ratio > 0.0) {
+            original_grid_velocity = get_saved_velocity_with_order(p.x_, interpolation_order);
       p.v_ = next_grid_velocity + (lagrangian_velocity - original_grid_velocity) * lagrangian_ratio;  // flip：只转换增量部分
-    } else {
-      p.v_ = next_grid_velocity;
-    }
+        } else {
+            p.v_ = next_grid_velocity;
+        }
 
 #ifdef COMPRESSIBLE_FLUID
-    scalar lagrangian_rho = p.dens_;
-    scalar next_grid_rho = get_density(p.x_);
-    if (lagrangian_ratio > 0.0) {
-      scalar original_grid_rho = get_saved_density(p.x_);
-      p.dens_ = next_grid_rho + (lagrangian_rho - original_grid_rho) * lagrangian_ratio;
-    } else {
-      p.dens_ = next_grid_rho;
-    }
-    p.mass_ = 4.0 / 3.0 * M_PI * p.radii_ * p.radii_ * p.radii_ * p.dens_;
+        scalar lagrangian_rho = p.dens_;
+        scalar next_grid_rho = get_density(p.x_);
+        if (lagrangian_ratio > 0.0) {
+            scalar original_grid_rho = get_saved_density(p.x_);
+            p.dens_ = next_grid_rho + (lagrangian_rho - original_grid_rho) * lagrangian_ratio;
+        } else {
+            p.dens_ = next_grid_rho;
+        }
+        p.mass_ = 4.0 / 3.0 * M_PI * p.radii_ * p.radii_ * p.radii_ * p.dens_;
 #endif
 
-    p.c_ = C * (affine_stretching_ratio + affine_rotational_ratio) * 0.5 + C.transpose() * (affine_stretching_ratio - affine_rotational_ratio) * 0.5;
+        p.c_ = C * (affine_stretching_ratio + affine_rotational_ratio) * 0.5 + C.transpose() * (affine_stretching_ratio - affine_rotational_ratio) * 0.5;
 
-    // 插值质量
-    // p.mass_ = get_mass_quadratic(p.x_, density_);
-    // debug
-    // scalar mass = get_mass_quadratic(p.x_, density_);
-    // printf("mass: %f\n", mass);
-
-    if (lagrangian_symplecticity > 0.0 && lagrangian_ratio > 0.0) {
-      scalar logdJ = C.trace() * dt;
-      p.logJ_ += logdJ;
-      scalar pos_adj = lagrangian_symplecticity;
-      Vector2s pp = (p.x_ - origin_) / dx_;
-      scalar phi_value = interpolate_value(pp, nodal_solid_phi_);
-      if (phi_value < 0) {
-        Vector2s normal;
-        interpolate_gradient(normal, pp, nodal_solid_phi_);
-        normal.normalize();
-        float dotnv = -normal.dot(lagrangian_velocity);
-        if (dotnv > 0.0) {
-          pos_adj = 0.0;
+        if (lagrangian_symplecticity > 0.0 && lagrangian_ratio > 0.0) {
+            scalar logdJ = C.trace() * dt;
+            p.logJ_ += logdJ;
+            scalar pos_adj = lagrangian_symplecticity;
+            Vector2s pp = (p.x_ - origin_) / dx_;
+            scalar phi_value = interpolate_value(pp, nodal_solid_phi_);
+            if (phi_value < 0) {
+                Vector2s normal;
+                interpolate_gradient(normal, pp, nodal_solid_phi_);
+                normal.normalize();
+                float dotnv = -normal.dot(lagrangian_velocity);
+                if (dotnv > 0.0) {
+                    pos_adj = 0.0;
+                }
+            }
+            if (p.logJ_ < -0.001) {
+                pos_adj = 0.0;
+            }
+            p.x_ += (next_grid_velocity + (lagrangian_velocity - original_grid_velocity) * lagrangian_ratio * lagrangian_symplecticity) * dt;
+        } 
+        else {
+            p.x_ += next_grid_velocity * dt;
         }
-      }
-      if (p.logJ_ < -0.001) {
-        pos_adj = 0.0;
-      }
-      p.x_ += (next_grid_velocity + (lagrangian_velocity - original_grid_velocity) * lagrangian_ratio * lagrangian_symplecticity) * dt;
-    } else {
-      p.x_ += next_grid_velocity * dt;
-    }
-  });
+    });
 }
 
 void FluidSim::render_boundaries(const Boundary& b) {
@@ -1252,56 +1234,54 @@ void extrapolate(Array2s& grid, Array2s& old_grid, const Array2s& grid_weight, c
   }
 }
 
-scalar FluidSim::compute_coef_A(const scalar& rho) {
-  scalar denominator = (b * b + 2.0f * rho * b - rho * rho);
-  scalar T = 273.0f;
-  // return R * b * b / ((b - rho) * (b - rho)) - 2.0f * a * b * b * b * rho * (rho + b) / (denominator * denominator);
-  return T * R * b * b/ ((b - rho) * (b - rho)) - 2.0f * a * b * b * b * rho * (rho + b) / (denominator * denominator);
+
+scalar FluidSim::compute_coef_A(const scalar& rho) { 
+	scalar background_T = 300.0f;
+	scalar denominator = (b * b + 2.0f * rho * b - rho * rho);
+	return R * background_T * b * b / ((b - rho) * (b - rho)) - 2.0f * a * b * b * b * rho * (rho + b) / (denominator * denominator); 
 }
 
 scalar FluidSim::compute_coef_B(const scalar& rho) {
-  //scalar numerator = 14.0f * rho * b * b * b + 14.0f * rho * rho * b * b - 8.0f * rho * rho * rho * b + 4.0f * b * b * b * b;
-  scalar numerator =  b * b * b + 14.0f * rho * rho * b * b - 8.0f * rho * rho * rho * b + 4.0f * b * b * b * b;
-  scalar denominator = (b * b * b + 3.0f * rho * rho * b - 2 * rho * rho * rho);
-  scalar T = 273.0f;
-  //return R * b * b / (2.0f * (b - rho) * (b - rho) * (b - rho)) - a * b * b * numerator / (denominator * denominator * denominator);
-  return 2 * R * T * b * b / ((b - rho) * (b - rho) * (b - rho)) - 2 * a * b * b * b * numerator / (denominator * denominator * denominator);
+	scalar background_T = 300.0f;
+	scalar numerator = b * b * b + 3.0f * rho * rho * b + 2.0f * rho * rho * rho;
+	scalar denominator = (b * b + 2.0f * rho * b - rho * rho);
+    return 2.0f * R * background_T * b * b / ((b - rho) * (b - rho) * (b - rho)) - 2.0f * a * b * b * b * numerator / (denominator * denominator * denominator);
 }
 
 /*! Output Data Bgeo */
 void FluidSim::OutputPointDataBgeo(const std::string& s, const int frame) {
-  std::string file = s + std::to_string(frame) + ".bgeo";
-  std::cout << "Writing to: " << file << std::endl;
+    std::string file = s + std::to_string(frame) + ".bgeo";
+    std::cout << "Writing to: " << file << std::endl;
 
-  Partio::ParticlesDataMutable* parts = Partio::create();
+    Partio::ParticlesDataMutable* parts = Partio::create();
   Partio::ParticleAttribute pos, vel, rho, mass;
-  pos = parts->addAttribute("position", Partio::VECTOR, 3);
-  vel = parts->addAttribute("velocity", Partio::VECTOR, 3);
-  rho = parts->addAttribute("rho", Partio::FLOAT, 1);
+    pos = parts->addAttribute("position", Partio::VECTOR, 3);
+    vel = parts->addAttribute("velocity", Partio::VECTOR, 3);
+    rho = parts->addAttribute("rho", Partio::FLOAT, 1);
   mass = parts->addAttribute("mass", Partio::FLOAT, 1);
 
-  for (int i = 0; i < particles_.size(); i++) {
-    auto& p = particles_[i];
-    Vector2s p_x = p.x_;
-    Vector2s p_v = p.v_;
-    scalar p_rho = p.dens_;
+    for (int i = 0; i < particles_.size(); i++) {
+        auto& p = particles_[i];
+        Vector2s p_x = p.x_;
+        Vector2s p_v = p.v_;
+        scalar p_rho = p.dens_;
     scalar p_mass = p.mass_;
 
-    int idx = parts->addParticle();
-    float* x = parts->dataWrite<float>(pos, idx);
-    float* v = parts->dataWrite<float>(vel, idx);
-    float* dens = parts->dataWrite<float>(rho, idx);
+		int idx = parts->addParticle();
+		float* x = parts->dataWrite<float>(pos, idx);
+		float* v = parts->dataWrite<float>(vel, idx);
+        float* dens = parts->dataWrite<float>(rho, idx);
     float* m = parts->dataWrite<float>(mass, idx);
 
-    x[0] = p_x[0];
-    x[1] = p_x[1];
-    x[2] = 0.0f;
-    v[0] = p_v[0];
-    v[1] = p_v[1];
-    v[2] = 0.0f;
-    *dens = p_rho;
-    *m = p_mass;
-  }
+		x[0] = p_x[0];
+		x[1] = p_x[1];
+		x[2] = 0.0f;
+		v[0] = p_v[0];
+		v[1] = p_v[1];
+		v[2] = 0.0f;
+        *dens = p_rho;
+        *m = p_mass;
+	}
 
   Partio::write(file.c_str(), *parts);
   parts->release();
@@ -1315,20 +1295,28 @@ void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
   Partio::ParticleAttribute pos, rho, press, lapP;
   pos = parts->addAttribute("position", Partio::VECTOR, 3);
   rho = parts->addAttribute("rho", Partio::FLOAT, 1);
+  press = parts->addAttribute("pressure", Partio::FLOAT, 1);
+  lapP = parts->addAttribute("laplacianP", Partio::FLOAT, 1);
 
   for (int j = 0; j < nj_; j++)
     for (int i = 0; i < ni_; i++) {
       Vector2s p_x = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_);
       scalar p_rho = comp_rho_(i, j);
+      scalar p_press = comp_pressure_(i, j);
+	  scalar p_lapP = laplacianP_(i, j);
 
       int idx = parts->addParticle();
       float* x = parts->dataWrite<float>(pos, idx);
       float* dens = parts->dataWrite<float>(rho, idx);
+      float* pressure = parts->dataWrite<float>(press, idx);
+	  float* laplacianP = parts->dataWrite<float>(lapP, idx);
 
       x[0] = p_x[0];
       x[1] = p_x[1];
       x[2] = 0.0f;
       *dens = p_rho;
+      *pressure = p_press;
+	  *laplacianP = p_lapP;
     }
 
   Partio::write(file.c_str(), *parts);
@@ -1391,135 +1379,170 @@ void FluidSim::OutputGridYDataBgeo(const std::string& s, const int frame) {
   parts->release();
 }
 
+scalar FluidSim::get_pressure(const scalar& rho)
+{
+	scalar background_T = 300.0f;
+	scalar p_R = R, p_a = a, p_b = b;
+	// total_pressure = dynamic_pressure + static_pressure
+    auto total_pressure = [p_R, p_a, p_b](scalar T, scalar dens) {
+		return p_R * p_b * T * dens / (p_b - dens) - p_a * p_b * p_b * dens * dens / (p_b * p_b + 2.0f * dens * p_b - dens * dens);
+    };
+
+	scalar static_pressure = total_pressure(background_T, rho_);
+	return max(0.0f, total_pressure(background_T, rho) - static_pressure);
+}
+
 // this is incomplete version
 void FluidSim::solve_compressible_density(scalar dt) {
-  int system_size = ni_ * nj_;
-  if (rhs_.size() != system_size) {
-    rhs_.resize(system_size);
-    comp_rho_solution_.resize(system_size);
-    matrix_.resize(system_size);
-  }
-  matrix_.zero();
+	int system_size = ni_ * nj_;
+	if (rhs_.size() != system_size) {
+		rhs_.resize(system_size);
+		comp_rho_solution_.resize(system_size);
+		matrix_.resize(system_size);
+	}
+	matrix_.zero();
+        
+	// Build the linear system for density 
+	parallel_for(1, nj_ - 1, [&](int j) {
+          for (int i = 1; i < ni_ - 1; ++i) {
+				laplacianP_(i, j) = 0.0f;
+				int index = i + ni_ * j;
+				rhs_[index] = 0;
+				comp_rho_solution_[index] = 0;
+				float centre_phi = liquid_phi_(i, j);
+				float t2dx2 = dt * dt / (dx_ * dx_);
+				float coef_A = t2dx2 * compute_coef_A(comp_rho_(i, j)); //多乘了t2dx2, why?
+				float coef_B = (t2dx2 / 2.0f) * compute_coef_B(comp_rho_(i, j));
+				if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
+					// right neighbour
+					float centre_term = u_weights_(i + 1, j) * coef_A;
+					float vel_term = 0.0f;  // u_weights_(i + 1, j) * (t2dx2 * u_(i + 1, j) / (2.0f * dx_));  有什么用？
+					float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  //？？
+					float term = u_weights_(i + 1, j) * (coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))) - vel_term;
+					float right_phi = liquid_phi_(i + 1, j);
+					if (right_phi < 0) {
+						matrix_.add_to_element(index, index, local_term);
+						matrix_.add_to_element(index, index + 1, -term);
+					} else {
+						float theta = fraction_inside(centre_phi, right_phi);
+						if (theta < 0.01) theta = 0.01;
+						matrix_.add_to_element(index, index, centre_term / theta);  // doesm't consider divergence term near interface
+					}
 
-  // Build the linear system for density
-  parallel_for(1, nj_ - 1, [&](int j) {
-    for (int i = 1; i < ni_ - 1; ++i) {
-      int index = i + ni_ * j;
-      rhs_[index] = 0;
-      comp_rho_solution_[index] = 0;
-      float centre_phi = liquid_phi_(i, j);
-      float coef_A = compute_coef_A(comp_rho_(i, j));  // 偏微分方程里的那俩系数 A和B
-      float coef_B = compute_coef_B(comp_rho_(i, j));
-      float div_vel = (u_(i + 1, j) - u_(i, j) + v_(i, j + 1) - v_(i, j)) / dx_;  // 计算速度场在i, j处的散度
-      matrix_.add_to_element(index, index, 1 / dt - div_vel);  
-      if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
-        // right neighbour
-        float term = u_weights_(i + 1, j) * dt / sqr(2 * dx_);
-        float right_phi = liquid_phi_(i + 1, j);
-        float diagonal_add_element = -term * coef_A;
-        if (right_phi < 0) {
-          matrix_.add_to_element(index, index, diagonal_add_element);  // TODO:density_(i-1,j) 在边界时如何处理？
-          matrix_.add_to_element(index, index + 1, term * (coef_A + coef_B * (density_(i + 1, j) - density_(i - 1, j))));
-        } else {
-          float theta = fraction_inside(centre_phi, right_phi);
-          if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, diagonal_add_element / theta);
-        }
-        rhs_[index] -= u_weights_(i + 1, j) * (density_(i + 1, j) - density_(i - 1, j)) * u_(i + 1, j) / dx_;
+					laplacianP_(i,j) += u_weights_(i + 1, j) * ((coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j)))*comp_rho_(i+1,j)-coef_A * comp_rho_(i,j));
 
-        // left neighbour
-        term = u_weights_(i, j) * dt / sqr(dx_);
-        float left_phi = liquid_phi_(i - 1, j);
-        if (left_phi < 0) {
-          matrix_.add_to_element(index, index, diagonal_add_element);  // 重复加了一次
-          matrix_.add_to_element(index, index - 1, term * (coef_A - coef_B * (density_(i + 1, j) - density_(i - 1, j))));
-        } else {
-          float theta = fraction_inside(centre_phi, left_phi);
-          if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, diagonal_add_element / theta);
-        }
-        //rhs_[index] += u_weights_(i, j) * u_(i, j) / dx_;
-        rhs_[index] += u_weights_(i, j) * (density_(i + 1, j) - density_(i - 1, j)) * u_(i, j) / dx_; //等式的常量同边界液体的关系是什么？
+					// left neighbour
+					vel_term = 0.0f;//u_weights_(i, j) * (t2dx2 * u_(i, j) / (2.0f * dx_));
+					term = u_weights_(i + 1, j) * (coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i - 1, j))) + vel_term;
+					local_term = centre_term - vel_term -u_weights_(i,j) * u_(i,j) * dt / dx_;
+					float left_phi = liquid_phi_(i - 1, j);
+					if (left_phi < 0) {
+					    matrix_.add_to_element(index, index, local_term);
+						matrix_.add_to_element(index, index - 1, -term);
+					} else {
+						float theta = fraction_inside(centre_phi, left_phi);
+						if (theta < 0.01) theta = 0.01;
+						matrix_.add_to_element(index, index, centre_term / theta);
+					}
+					laplacianP_(i,j) += u_weights_(i, j) * ((coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i-1, j)))*comp_rho_(i-1,j)-coef_A * comp_rho_(i,j));
 
-        // top neighbour
-        term = v_weights_(i, j + 1) * dt / sqr(dx_);
-        float top_phi = liquid_phi_(i, j + 1);
-        if (top_phi < 0) {
-          matrix_.add_to_element(index, index, diagonal_add_element);
-          matrix_.add_to_element(index, index + ni_, term * (coef_A + coef_B * (density_(i, j + 1) - density_(i, j - 1))));
-        } else {
-          float theta = fraction_inside(centre_phi, top_phi);
-          if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, diagonal_add_element / theta);
-        }
-        rhs_[index] -= v_weights_(i, j + 1) * (density_(i, j + 1) - density_(i, j - 1)) * v_(i, j + 1) / dx_;
+					// top neighbour
+					vel_term = 0.0f;//v_weights_(i, j + 1) * (t2dx2 * v_(i, j + 1) / (2.0f * dx_));
+					term = v_weights_(i, j + 1) * (coef_A + coef_B * (comp_rho_(i, j + 1) - comp_rho_(i, j))) - vel_term;
+					local_term = centre_term + vel_term + v_weights_(i,j+1) * v_(i,j+1) * dt / dx_;
+					float top_phi = liquid_phi_(i, j + 1);
+					if (top_phi < 0) {
+						matrix_.add_to_element(index, index, local_term);
+						matrix_.add_to_element(index, index + ni_, -term);
+					} else {
+						float theta = fraction_inside(centre_phi, top_phi);
+						if (theta < 0.01) theta = 0.01;
+						matrix_.add_to_element(index, index, centre_term / theta);
+					}
+					laplacianP_(i,j) += v_weights_(i, j+1) * ((coef_A + coef_B * (comp_rho_(i, j+1) - comp_rho_(i, j)))*comp_rho_(i,j+1)-coef_A * comp_rho_(i,j));
 
-        // bottom neighbour
-        term = v_weights_(i, j) * dt / sqr(dx_);
-        float bot_phi = liquid_phi_(i, j - 1);
-        if (bot_phi < 0) {
-          matrix_.add_to_element(index, index, diagonal_add_element);
-          matrix_.add_to_element(index, index - ni_, term * (coef_A - coef_B * (density_(i, j + 1) - density_(i, j - 1))));
-        } else {
-          float theta = fraction_inside(centre_phi, bot_phi);
-          if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, diagonal_add_element / theta);
-        }
-        rhs_[index] += v_weights_(i, j) *(density_(i, j + 1) - density_(i, j - 1))* v_(i, j) / dx_;
+					// bottom neighbour
+					vel_term = 0.0f;//v_weights_(i, j - 1) * (t2dx2 * v_(i, j - 1) / (2.0f * dx_));
+					term = v_weights_(i, j - 1) * (coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i, j - 1))) + vel_term;
+					local_term = centre_term - vel_term - v_weights_(i,j) * v_(i,j) * dt / dx_;
+					float bot_phi = liquid_phi_(i, j - 1);
+					if (bot_phi < 0) {
+						matrix_.add_to_element(index, index, local_term);
+						matrix_.add_to_element(index, index - ni_, -term);
+					} else {
+						float theta = fraction_inside(centre_phi, bot_phi);
+						if (theta < 0.01) theta = 0.01;
+						matrix_.add_to_element(index, index, centre_term / theta);
+					}
+					laplacianP_(i,j) += v_weights_(i, j) * ((coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i, j-1)))*comp_rho_(i,j-1)-coef_A * comp_rho_(i,j));
+
+					// time dependent term
+					matrix_.add_to_element(index, index, 1.0f);
 					rhs_[index] += comp_rho_(i,j); // why?
-      }
-    }
-  });
+                    //   rhs_[index] += v_weights_(i, j) *(density_(i, j + 1) - density_(i, j - 1))* v_(i, j) / dx_;
+				}
+		}
+	});
 
-  // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
-  scalar residual;
-  int iterations;
-  bool success = solver_.solve(matrix_, rhs_, pressure_, residual, iterations);
-  if (!success) {
-    std::cout << "WARNING: Pressure solve failed! residual = " << residual << ", iters = " << iterations << std::endl;
-  }
+	// Solve the system using Robert Bridson's incomplete Cholesky PCG solver
+	scalar residual;
+	int iterations;
+	bool success = solver_.solve(matrix_, rhs_, comp_rho_solution_, residual, iterations);
+	if (!success) {
+		std::cout << "WARNING: Density solve failed! residual = " << residual << ", iters = " << iterations << std::endl;
+	}
 
-  // TODO:更新压强
-
-  // Apply the velocity update
-  parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
-    if (j < u_.nj) {
-      for (int i = 1; i < u_.ni - 1; ++i) {
-        int index = i + j * ni_;
-        if (u_weights_(i, j) > 0) {
-          if (liquid_phi_(i, j) < 0 || liquid_phi_(i - 1, j) < 0) {
-            float theta = 1;
-            if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
-            if (theta < 0.01) theta = 0.01;
+	comp_pressure_.set_zero();
+	// Calculate pressure field using DVS equation
+    parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
+		if (j < u_.nj) {
+			for (int i = 1; i < u_.ni - 1; ++i) {
+				int index = i + j * ni_;
+				comp_rho_(i,j) = comp_rho_solution_[index];
+				comp_pressure_(i,j) = get_pressure(comp_rho_solution_[index]);
+			}
+		}
+    });
+/**/
+	// Apply the velocity update
+	parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
+		if (j < u_.nj) {
+			for (int i = 1; i < u_.ni - 1; ++i) {
+				int index = i + j * ni_;
+				if (u_weights_(i, j) > 0) {
+					if (liquid_phi_(i, j) < 0 || liquid_phi_(i - 1, j) < 0) {
+						float theta = 1;
+						if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
+						if (theta < 0.01) theta = 0.01;
             u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: 是否应该再除以密度？
-            u_valid_(i, j) = 1;
-          } else {
-            u_valid_(i, j) = 0;
-          }
-        } else {
-          u_(i, j) = 0;
-          u_valid_(i, j) = 0;
-        }
-      }
-    }
-    if (j >= 1 && j < v_.nj - 1) {
-      for (int i = 0; i < v_.ni; ++i) {
-        int index = i + j * ni_;
-        if (v_weights_(i, j) > 0) {
-          if (liquid_phi_(i, j) < 0 || liquid_phi_(i, j - 1) < 0) {
-            float theta = 1;
-            if (liquid_phi_(i, j) >= 0 || liquid_phi_(i, j - 1) >= 0) theta = fraction_inside(liquid_phi_(i, j - 1), liquid_phi_(i, j));
-            if (theta < 0.01) theta = 0.01;
-            v_(i, j) -= dt * (pressure_[index] - pressure_[index - ni_]) / dx_ / theta;
-            v_valid_(i, j) = 1;
-          } else {
-            v_valid_(i, j) = 0;
-          }
-        } else {
-          v_(i, j) = 0;
-          v_valid_(i, j) = 0;
-        }
-      }
-    }
-  });
+						u_valid_(i, j) = 1;
+					} else {
+						u_valid_(i, j) = 0;
+					}
+				} else {
+					u_(i, j) = 0;
+					u_valid_(i, j) = 0;
+				}
+			}
+		}
+		if (j >= 1 && j < v_.nj - 1) {
+			for (int i = 0; i < v_.ni; ++i) {
+				int index = i + j * ni_;
+				if (v_weights_(i, j) > 0) {
+					if (liquid_phi_(i, j) < 0 || liquid_phi_(i, j - 1) < 0) {
+						float theta = 1;
+						if (liquid_phi_(i, j) >= 0 || liquid_phi_(i, j - 1) >= 0) theta = fraction_inside(liquid_phi_(i, j - 1), liquid_phi_(i, j));
+						if (theta < 0.01) theta = 0.01;
+						v_(i, j) -= dt * (comp_pressure_(i, j) - comp_pressure_(i, j - 1)) / dx_ / theta;
+						v_valid_(i, j) = 1;
+					} else {
+						v_valid_(i, j) = 0;
+					}
+				} else {
+					v_(i, j) = 0;
+					v_valid_(i, j) = 0;
+				}
+			}
+		}
+	});
 }

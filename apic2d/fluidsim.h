@@ -18,6 +18,8 @@
 
 #define COMPRESSIBLE_FLUID
 
+#define OUT_PUT
+
 #include <chrono>
 #include <memory>
 #include <vector>
@@ -26,7 +28,6 @@
 #include "math_defs.h"
 #include "sparse_matrix.h"
 #include "pcg_solver.h"
-
 #include "Partio.h"
 
 class sorter;
@@ -43,7 +44,6 @@ struct Particle {
   Vector2s buf0_;
 
   scalar dens_;
-  
   scalar radii_;
   scalar mass_;
   scalar logJ_;
@@ -141,9 +141,6 @@ class FluidSim {
 
   /*! Quadratic interpolation kernels */
   Vector2s get_velocity_quadratic_impl(const Vector2s& position, const Array2s& uu, const Array2s& vv);
-
-  scalar get_mass_quadratic(const Vector2s& position, const Array2s& density);  // grid to particle时插值粒子的质量
-
   Matrix2s get_affine_matrix_quadratic_impl(const Vector2s& position, const Array2s& uu, const Array2s& vv);
   Vector2s get_velocity_quadratic(const Vector2s& position);
   Matrix2s get_affine_matrix_quadratic(const Vector2s& position);
@@ -259,6 +256,7 @@ class FluidSim {
   // compressible fluid operations
   scalar compute_coef_A(const scalar& rho);
   scalar compute_coef_B(const scalar& rho);
+  scalar get_pressure(const scalar& rho);
   void solve_compressible_density(scalar dt);
 
  private:
@@ -277,8 +275,6 @@ class FluidSim {
   Array2s temp_u_, temp_v_;
   Array2s saved_u_, saved_v_;
 
-  Array2s density_;
-
   /*! Tracer particles */
   std::vector<Particle> particles_;
 
@@ -294,7 +290,11 @@ class FluidSim {
   /*! compressible fluid */
   Array2s comp_rho_;
   Array2s saved_comp_rho_;
+  Array2s comp_pressure_;
   scalar a, b, R;
+
+  /*! debug arrays*/
+  Array2s laplacianP_;
 
   sorter* m_sorter_;
 
@@ -305,7 +305,6 @@ class FluidSim {
   std::vector<scalar> pressure_;
   std::vector<scalar> comp_rho_solution_;
 
-  //std::vector<scalar> density_;
   bool draw_grid_;
   bool draw_particles_;
   bool draw_velocities_;
