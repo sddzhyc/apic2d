@@ -1292,24 +1292,27 @@ void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
   std::cout << "Writing to: " << file << std::endl;
 
   Partio::ParticlesDataMutable* parts = Partio::create();
-  Partio::ParticleAttribute pos, rho, press, lapP;
+  Partio::ParticleAttribute pos, rho, press, lapP, liquidPhi;
   pos = parts->addAttribute("position", Partio::VECTOR, 3);
   rho = parts->addAttribute("rho", Partio::FLOAT, 1);
   press = parts->addAttribute("pressure", Partio::FLOAT, 1);
   lapP = parts->addAttribute("laplacianP", Partio::FLOAT, 1);
-
+  liquidPhi = parts->addAttribute("liquid_phi", Partio::FLOAT, 1);
+  
   for (int j = 0; j < nj_; j++)
     for (int i = 0; i < ni_; i++) {
       Vector2s p_x = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_);
       scalar p_rho = comp_rho_(i, j);
       scalar p_press = comp_pressure_(i, j);
 	  scalar p_lapP = laplacianP_(i, j);
+      scalar p_liquid_phi = liquid_phi_(i, j);
 
       int idx = parts->addParticle();
       float* x = parts->dataWrite<float>(pos, idx);
       float* dens = parts->dataWrite<float>(rho, idx);
       float* pressure = parts->dataWrite<float>(press, idx);
 	  float* laplacianP = parts->dataWrite<float>(lapP, idx);
+      float* liquid_phi = parts->dataWrite<float>(liquidPhi, idx);
 
       x[0] = p_x[0];
       x[1] = p_x[1];
@@ -1317,6 +1320,7 @@ void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
       *dens = p_rho;
       *pressure = p_press;
 	  *laplacianP = p_lapP;
+      *liquid_phi = p_liquid_phi;
     }
 
   Partio::write(file.c_str(), *parts);
@@ -1328,9 +1332,10 @@ void FluidSim::OutputGridXDataBgeo(const std::string& s, const int frame) {
   std::cout << "Writing to: " << file << std::endl;
 
   Partio::ParticlesDataMutable* parts = Partio::create();
-  Partio::ParticleAttribute pos, uf, velx, velxa;
+  Partio::ParticleAttribute pos, uf, velx, velxa, u_weight_;
   pos = parts->addAttribute("position", Partio::VECTOR, 3);
   velx = parts->addAttribute("u", Partio::FLOAT, 1);
+  u_weight_ = parts->addAttribute("u_weight_", Partio::FLOAT, 1);
 
   for (int j = 0; j < nj_; j++)
     for (int i = 0; i < ni_ + 1; i++) {
@@ -1340,11 +1345,13 @@ void FluidSim::OutputGridXDataBgeo(const std::string& s, const int frame) {
       int idx = parts->addParticle();
       float* x = parts->dataWrite<float>(pos, idx);
       float* u = parts->dataWrite<float>(velx, idx);
+      float* u_weight = parts->dataWrite<float>(u_weight_, idx);
 
       x[0] = p_x[0];
       x[1] = p_x[1];
       x[2] = 0.0f;
       *u = p_u;
+      *u_weight = u_weights_(i, j);
     }
 
   Partio::write(file.c_str(), *parts);
@@ -1356,9 +1363,10 @@ void FluidSim::OutputGridYDataBgeo(const std::string& s, const int frame) {
   std::cout << "Writing to: " << file << std::endl;
 
   Partio::ParticlesDataMutable* parts = Partio::create();
-  Partio::ParticleAttribute pos, vf, vely, velya;
+  Partio::ParticleAttribute pos, vf, vely, velya, v_weight_;
   pos = parts->addAttribute("position", Partio::VECTOR, 3);
   vely = parts->addAttribute("v", Partio::FLOAT, 1);
+  v_weight_ = parts->addAttribute("v_weight_", Partio::FLOAT, 1);
 
   for (int j = 0; j < nj_ + 1; j++)
     for (int i = 0; i < ni_; i++) {
@@ -1368,11 +1376,12 @@ void FluidSim::OutputGridYDataBgeo(const std::string& s, const int frame) {
       int idx = parts->addParticle();
       float* x = parts->dataWrite<float>(pos, idx);
       float* v = parts->dataWrite<float>(vely, idx);
-
+      float* v_weight = parts->dataWrite<float>(v_weight_, idx);
       x[0] = p_x[0];
       x[1] = p_x[1];
       x[2] = 0.0f;
       *v = p_v;
+      *v_weight = v_weights_(i, j);
     }
 
   Partio::write(file.c_str(), *parts);
