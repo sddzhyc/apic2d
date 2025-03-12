@@ -415,13 +415,13 @@ void FluidSim::compute_liquid_distance() {
   const scalar min_radius = dx_ / sqrtf(2.0);
   parallel_for(0, static_cast<int>(nj_), [&](int j) {
     for (int i = 0; i < ni_; ++i) {
-      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;
+      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_; //网格中心位置
       // Estimate from particles
       scalar min_liquid_phi = dx_;
       m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
         for (const Particle* p : neighbors) {
           scalar phi_temp = (pos - p->x_).norm() - std::max(p->radii_, min_radius);
-          min_liquid_phi = std::min(min_liquid_phi, phi_temp);
+          min_liquid_phi = std::min(min_liquid_phi, phi_temp); //网格中心到最近邻粒子边缘的距离
         }
       });
 
@@ -656,7 +656,7 @@ scalar FluidSim::get_density(const Vector2s& position) {
 
 scalar FluidSim::get_saved_density(const Vector2s& position) {
   Vector2s p = (position - origin_) / dx_;
-  Vector2s p0 = p - Vector2s(0.5, 0.5);
+  Vector2s p0 = p - Vector2s(0.5, 0.5);  // 交错网格，密度网格中的(i, j)是压强网格坐标中的 (i - 1/2, j - 1/2)
   scalar dens_value = interpolate_value(p0, saved_comp_rho_);
 
   return dens_value;
@@ -725,13 +725,14 @@ void FluidSim::solve_pressure(scalar dt) {
         if (right_phi < 0) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index + 1, -term);
-        } else {
-          float theta = fraction_inside(centre_phi, right_phi);
+        } else {  // liquid_phi_ >=0 时：邻居单元格为空气或固体边界时，其对应的参数(index, index + 1)的系数变化量为0
+          float theta = fraction_inside(centre_phi, right_phi);  //theta 是什么？
           if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, term / theta);
-        }
-        rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_;
-
+          matrix_.add_to_element(index, index, term / theta);  // TODO:theta是什么？
+                                                               // theta 无穷大时，系数变化量为0，对应邻居单元格为固体边界
+        }                                                      // theta = 1时，系数变化量为原值，对应邻居单元格为空气
+        rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_; // 交错网格，(i, j)就是 (i - 1/2, j)
+                                                                  // u_weights_(i, j) = 0时，左邻单元格是固体，该邻居单元格边上的速度项为0
         // left neighbour
         term = u_weights_(i, j) * dt / sqr(dx_);
         float left_phi = liquid_phi_(i - 1, j);
@@ -980,10 +981,10 @@ void FluidSim::map_p2g_compressible() {
             v_(i, j) = sumw ? sumu / sumw : 0.0;
         }
 
-        // rho
+        // rho  //注意：这里对rho的插值完全没有使用粒子的质量
         if (j < nj_) {
             for (int i = 0; i < ni_; ++i) {
-                Vector2s pos = Vector2s((i+0.5) * dx_, (j+0.5) * dx_) + origin_;
+            Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // 交错网格，密度在压强单元格中心
                 scalar sumw = 0.0;
                 scalar sumrho = 0.0;
                 m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) {
@@ -1008,6 +1009,7 @@ void FluidSim::map_p2g_compressible() {
 void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, const scalar lagrangian_symplecticity, const scalar affine_stretching_ratio,
                                     const scalar affine_rotational_ratio) {
     bool use_affine = affine_stretching_ratio > 0. || affine_rotational_ratio > 0.;
+    scalar sum_rho = 0.0;
     parallel_for(0, static_cast<int>(particles_.size()), [&](int i) {
         auto& p = particles_[i];
 
@@ -1032,7 +1034,12 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
         } else {
             p.dens_ = next_grid_rho;
         }
-        p.mass_ = 4.0 / 3.0 * M_PI * p.radii_ * p.radii_ * p.radii_ * p.dens_;
+        
+        sum_rho += p.dens_;
+        //TODO:发现使用任何公式更新质量后，密度都会迅速衰减为0（具体表现：在流体自由落体到边界前，程序就崩了）
+        //p.mass_ = p.dens_;
+        //p.mass_ = M_PI * p.radii_ * p.radii_ * p.dens_;
+        //p.mass_ = 4.0 / 3.0 * M_PI * p.radii_ * p.radii_ * p.dens_;
 #endif
 
         p.c_ = C * (affine_stretching_ratio + affine_rotational_ratio) * 0.5 + C.transpose() * (affine_stretching_ratio - affine_rotational_ratio) * 0.5;
@@ -1061,8 +1068,16 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
             p.x_ += next_grid_velocity * dt;
         }
     });
+#ifdef COMPRESSIBLE_FLUID
+    std::cout << "sum_rho: " << sum_rho << std::endl;
+    //奇怪现象：加了个循环语句后，求解反而稳定了一些？
+    for (int i = 0; i < particles_.size(); ++i) {
+    //  // 质量守恒
+    //  particles_[i].dens_ = particles_[i].dens_ / sum_rho * (particles_.size() * 1.0); //原密度为1
+    //  particles_[i].mass_ = M_PI * particles_[i].radii_ * particles_[i].radii_ * particles_[i].dens_;
+    }
+#endif
 }
-
 void FluidSim::render_boundaries(const Boundary& b) {
   switch (b.type_) {
     case BT_CIRCLE:
@@ -1420,19 +1435,26 @@ void FluidSim::solve_compressible_density(scalar dt) {
 				comp_rho_solution_[index] = 0;
 				float centre_phi = liquid_phi_(i, j);
 				float t2dx2 = dt * dt / (dx_ * dx_);
-				float coef_A = t2dx2 * compute_coef_A(comp_rho_(i, j)); //多乘了t2dx2, why?
+				float coef_A = t2dx2 * compute_coef_A(comp_rho_(i, j)); //多乘了t2dx2 ？
 				float coef_B = (t2dx2 / 2.0f) * compute_coef_B(comp_rho_(i, j));
 				if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
 					// right neighbour
+                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i + 1, j))/2);
+                    coef_B = (t2dx2 / 2.0f) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i + 1, j)) / 2);
 					float centre_term = u_weights_(i + 1, j) * coef_A;
 					float vel_term = 0.0f;  // u_weights_(i + 1, j) * (t2dx2 * u_(i + 1, j) / (2.0f * dx_));  有什么用？
-					float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  //？？
-					float term = u_weights_(i + 1, j) * (coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))) - vel_term;
+                    // u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_是速度散度项
+					//float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  
+					float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  
+
+					float term = u_weights_(i + 1, j) * (coef_A + 0.5 * coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))) - vel_term;
 					float right_phi = liquid_phi_(i + 1, j);
-					if (right_phi < 0) {
+                    // liquid_phi_小于0时，是液体单元格
+                    if (right_phi < 0) {
 						matrix_.add_to_element(index, index, local_term);
 						matrix_.add_to_element(index, index + 1, -term);
-					} else {
+					} else { 
+                        //邻居单元格是气体时
 						float theta = fraction_inside(centre_phi, right_phi);
 						if (theta < 0.01) theta = 0.01;
 						matrix_.add_to_element(index, index, centre_term / theta);  // doesm't consider divergence term near interface
@@ -1441,8 +1463,11 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					laplacianP_(i,j) += u_weights_(i + 1, j) * ((coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j)))*comp_rho_(i+1,j)-coef_A * comp_rho_(i,j));
 
 					// left neighbour
+                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
+                    coef_B = (t2dx2 / 2.0f) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
 					vel_term = 0.0f;//u_weights_(i, j) * (t2dx2 * u_(i, j) / (2.0f * dx_));
-					term = u_weights_(i + 1, j) * (coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i - 1, j))) + vel_term;
+					term = u_weights_(i + 1, j) * (coef_A - 0.5 * coef_B * (comp_rho_(i, j) - comp_rho_(i - 1, j))) + vel_term;
+					//local_term = centre_term - vel_term -u_weights_(i,j) * u_(i,j) * dt / dx_;
 					local_term = centre_term - vel_term -u_weights_(i,j) * u_(i,j) * dt / dx_;
 					float left_phi = liquid_phi_(i - 1, j);
 					if (left_phi < 0) {
@@ -1456,9 +1481,13 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					laplacianP_(i,j) += u_weights_(i, j) * ((coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i-1, j)))*comp_rho_(i-1,j)-coef_A * comp_rho_(i,j));
 
 					// top neighbour
+                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
+                    coef_B = (t2dx2 / 2.0f) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
 					vel_term = 0.0f;//v_weights_(i, j + 1) * (t2dx2 * v_(i, j + 1) / (2.0f * dx_));
-					term = v_weights_(i, j + 1) * (coef_A + coef_B * (comp_rho_(i, j + 1) - comp_rho_(i, j))) - vel_term;
+                    term = v_weights_(i, j + 1) * (coef_A + 0.5 * coef_B * (comp_rho_(i, j + 1) - comp_rho_(i, j))) - vel_term;
+					// local_term = centre_term + vel_term + v_weights_(i,j+1) * v_(i,j+1) * dt / dx_;
 					local_term = centre_term + vel_term + v_weights_(i,j+1) * v_(i,j+1) * dt / dx_;
+					
 					float top_phi = liquid_phi_(i, j + 1);
 					if (top_phi < 0) {
 						matrix_.add_to_element(index, index, local_term);
@@ -1471,8 +1500,10 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					laplacianP_(i,j) += v_weights_(i, j+1) * ((coef_A + coef_B * (comp_rho_(i, j+1) - comp_rho_(i, j)))*comp_rho_(i,j+1)-coef_A * comp_rho_(i,j));
 
 					// bottom neighbour
+                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
+                    coef_B = (t2dx2 / 2.0f) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
 					vel_term = 0.0f;//v_weights_(i, j - 1) * (t2dx2 * v_(i, j - 1) / (2.0f * dx_));
-					term = v_weights_(i, j - 1) * (coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i, j - 1))) + vel_term;
+                    term = v_weights_(i, j - 1) * (coef_A - 0.5 * coef_B * (comp_rho_(i, j) - comp_rho_(i, j - 1))) + vel_term;
 					local_term = centre_term - vel_term - v_weights_(i,j) * v_(i,j) * dt / dx_;
 					float bot_phi = liquid_phi_(i, j - 1);
 					if (bot_phi < 0) {
@@ -1487,7 +1518,7 @@ void FluidSim::solve_compressible_density(scalar dt) {
 
 					// time dependent term
 					matrix_.add_to_element(index, index, 1.0f);
-					rhs_[index] += comp_rho_(i,j); // why?
+					rhs_[index] += comp_rho_(i,j); // 移项1/t，方程左边乘t^2
                     //   rhs_[index] += v_weights_(i, j) *(density_(i, j + 1) - density_(i, j - 1))* v_(i, j) / dx_;
 				}
 		}
@@ -1499,8 +1530,20 @@ void FluidSim::solve_compressible_density(scalar dt) {
 	bool success = solver_.solve(matrix_, rhs_, comp_rho_solution_, residual, iterations);
 	if (!success) {
 		std::cout << "WARNING: Density solve failed! residual = " << residual << ", iters = " << iterations << std::endl;
-	}
-
+       } else {
+          std::cout << "Density solve succeeded! residual = " << residual << ", iters = " << iterations << std::endl;
+        }
+    // 求解后的密度修正
+    //for (int j = 0; j < nj_; ++j) {
+    //    for (int i = 0; i < ni_; ++i) {
+    //        int index = i + j * ni_;
+    //        comp_rho_solution_[index] += 0.005;
+    //        if (comp_rho_solution_[index] < 0.0) {
+    //          comp_rho_solution_[index] = 1.0;
+    //        }
+    //      }
+    //    }
+    //std::cout << "初始密度下的压强："<< get_pressure(1.0) << std::endl; //结果为0
 	comp_pressure_.set_zero();
 	// Calculate pressure field using DVS equation
     parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
@@ -1512,7 +1555,16 @@ void FluidSim::solve_compressible_density(scalar dt) {
 			}
 		}
     });
-/**/
+
+    // 调试用：打印comp_pressure_的最大值
+    scalar max_comp_pressure = 0.0;
+    for (int j = 0; j < nj_; ++j) {
+        for (int i = 0; i < ni_; ++i) {
+        max_comp_pressure = std::max(max_comp_pressure, comp_pressure_(i, j));
+        }
+    }
+    std::cout << "max_comp_pressure: " << max_comp_pressure << std::endl;
+
 	// Apply the velocity update
 	parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
 		if (j < u_.nj) {
@@ -1523,7 +1575,8 @@ void FluidSim::solve_compressible_density(scalar dt) {
 						float theta = 1;
 						if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
 						if (theta < 0.01) theta = 0.01;
-            u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: 是否应该再除以密度？
+                        u_(i, j) -= dt * (comp_pressure_(i, j) - comp_pressure_(i - 1, j)) / dx_ / theta;
+                        // u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: 是否应该再除以密度？
 						u_valid_(i, j) = 1;
 					} else {
 						u_valid_(i, j) = 0;

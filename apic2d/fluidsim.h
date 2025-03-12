@@ -280,8 +280,8 @@ class FluidSim {
 
   /*! Static geometry representation */
   Array2s nodal_solid_phi_;
-  Array2s liquid_phi_;
-  Array2s u_weights_, v_weights_;
+  Array2s liquid_phi_; // 衡量网格中液体、气体所占比例
+  Array2s u_weights_, v_weights_;  // 0表示全部为固体，1表示流体可流动区域
 
   /*! Data arrays for extrapolation */
   Array2c valid_, old_valid_;
