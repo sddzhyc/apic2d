@@ -289,6 +289,7 @@ class FluidSim {
 
   /*! compressible fluid */
   Array2s comp_rho_;
+  Array2s pre_comp_rho_;
   Array2s saved_comp_rho_;
   Array2s comp_pressure_;
   scalar a, b, R;

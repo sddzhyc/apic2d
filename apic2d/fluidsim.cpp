@@ -113,6 +113,14 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   R = 461.5;
   b = 949.7;
   a = 2977.4;  // at room temperature
+
+  //测试代码
+  // 在0到1.5区间上对coef_B函数绘制曲线
+  for (int i = 0; i < 100; i++) {
+    scalar x = i * 0.015;
+    std::cout << x << ", " << compute_coef_A(x) << ", " << compute_coef_B(x) << ", " << get_pressure(x) << std::endl;
+  }
+  std::cout << std::endl;
 }
 
 /*!
@@ -202,7 +210,7 @@ void FluidSim::advance(scalar dt) {
   map_p2g();
 #endif
   tock("p2g");
-  save_velocity();
+  save_velocity(); //此处保存了密度
 
   tick();
   add_force(dt);
@@ -220,7 +228,7 @@ void FluidSim::advance(scalar dt) {
   // Set up and solve the variational pressure solve.
   tick();
 #ifdef COMPRESSIBLE_FLUID
-  solve_compressible_density(dt); //启用不可压缩求解
+  solve_compressible_density(dt);  // 启用不可压缩求解，更新comp_rho_
 #else
   solve_pressure(dt);
 #endif
@@ -250,7 +258,7 @@ void FluidSim::advance(scalar dt) {
     case IT_PIC:
       // The original PIC, which is a specific case of a more general (Affine)
       // FLIP scheme
-      map_g2p_flip_general(dt, 0.0, 0.0, 0.0, 0.0);
+      map_g2p_flip_general(dt, 0.0, 0.0, 0.0, 0.0);  // TODO:此处调用了interpolation 函数来获取粒子位置的密度插值，但是使用的却是更新前的密度，why？
       break;
 
     case IT_FLIP:
@@ -1416,6 +1424,10 @@ scalar FluidSim::get_pressure(const scalar& rho)
 	return max(0.0f, total_pressure(background_T, rho) - static_pressure);
 }
 
+//void FluidSim::build_density_equation(int i, int j, ) { 
+//    int index = i + ni_ * j;
+//}
+
 // this is incomplete version
 void FluidSim::solve_compressible_density(scalar dt) {
 	int system_size = ni_ * nj_;
@@ -1425,7 +1437,7 @@ void FluidSim::solve_compressible_density(scalar dt) {
 		matrix_.resize(system_size);
 	}
 	matrix_.zero();
-        
+     
 	// Build the linear system for density 
 	parallel_for(1, nj_ - 1, [&](int j) {
           for (int i = 1; i < ni_ - 1; ++i) {
@@ -1435,19 +1447,23 @@ void FluidSim::solve_compressible_density(scalar dt) {
 				comp_rho_solution_[index] = 0;
 				float centre_phi = liquid_phi_(i, j);
 				float t2dx2 = dt * dt / (dx_ * dx_);
-				float coef_A = t2dx2 * compute_coef_A(comp_rho_(i, j)); //多乘了t2dx2 ？
-				float coef_B = (t2dx2 / 2.0f) * compute_coef_B(comp_rho_(i, j));
+				float coef_A = t2dx2 * compute_coef_A(comp_rho_(i, j));
+				float coef_B = (t2dx2 ) * compute_coef_B(comp_rho_(i, j));
+                if (comp_rho_ (i, j) > 0.0f) {
+                    std::cout << "rho: " << comp_rho_(i, j) << " coef_A: " << compute_coef_A(comp_rho_(i, j))
+                                << " coef_B: " << compute_coef_B(comp_rho_(i, j)) << std::endl;
+                    }
 				if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
 					// right neighbour
-                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i + 1, j))/2);
-                    coef_B = (t2dx2 / 2.0f) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i + 1, j)) / 2);
+                    //coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i + 1, j))/2);
+                    //coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i + 1, j)) / 2);
 					float centre_term = u_weights_(i + 1, j) * coef_A;
 					float vel_term = 0.0f;  // u_weights_(i + 1, j) * (t2dx2 * u_(i + 1, j) / (2.0f * dx_));  有什么用？
                     // u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_是速度散度项
 					//float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  
 					float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  
 
-					float term = u_weights_(i + 1, j) * (coef_A + 0.5 * coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))) - vel_term;
+					float term = u_weights_(i + 1, j) * (coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))) - vel_term;
 					float right_phi = liquid_phi_(i + 1, j);
                     // liquid_phi_小于0时，是液体单元格
                     if (right_phi < 0) {
@@ -1463,10 +1479,10 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					laplacianP_(i,j) += u_weights_(i + 1, j) * ((coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j)))*comp_rho_(i+1,j)-coef_A * comp_rho_(i,j));
 
 					// left neighbour
-                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
-                    coef_B = (t2dx2 / 2.0f) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
+                    //coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
+                    //coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
 					vel_term = 0.0f;//u_weights_(i, j) * (t2dx2 * u_(i, j) / (2.0f * dx_));
-					term = u_weights_(i + 1, j) * (coef_A - 0.5 * coef_B * (comp_rho_(i, j) - comp_rho_(i - 1, j))) + vel_term;
+					term = u_weights_(i + 1, j) * (coef_A -  coef_B * (comp_rho_(i, j) - comp_rho_(i - 1, j))) + vel_term;
 					//local_term = centre_term - vel_term -u_weights_(i,j) * u_(i,j) * dt / dx_;
 					local_term = centre_term - vel_term -u_weights_(i,j) * u_(i,j) * dt / dx_;
 					float left_phi = liquid_phi_(i - 1, j);
@@ -1481,10 +1497,10 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					laplacianP_(i,j) += u_weights_(i, j) * ((coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i-1, j)))*comp_rho_(i-1,j)-coef_A * comp_rho_(i,j));
 
 					// top neighbour
-                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
-                    coef_B = (t2dx2 / 2.0f) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
+                    //coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
+                    //coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
 					vel_term = 0.0f;//v_weights_(i, j + 1) * (t2dx2 * v_(i, j + 1) / (2.0f * dx_));
-                    term = v_weights_(i, j + 1) * (coef_A + 0.5 * coef_B * (comp_rho_(i, j + 1) - comp_rho_(i, j))) - vel_term;
+                    term = v_weights_(i, j + 1) * (coef_A + coef_B * (comp_rho_(i, j + 1) - comp_rho_(i, j))) - vel_term;
 					// local_term = centre_term + vel_term + v_weights_(i,j+1) * v_(i,j+1) * dt / dx_;
 					local_term = centre_term + vel_term + v_weights_(i,j+1) * v_(i,j+1) * dt / dx_;
 					
@@ -1500,10 +1516,10 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					laplacianP_(i,j) += v_weights_(i, j+1) * ((coef_A + coef_B * (comp_rho_(i, j+1) - comp_rho_(i, j)))*comp_rho_(i,j+1)-coef_A * comp_rho_(i,j));
 
 					// bottom neighbour
-                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
-                    coef_B = (t2dx2 / 2.0f) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
+                    //coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
+                    //coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
 					vel_term = 0.0f;//v_weights_(i, j - 1) * (t2dx2 * v_(i, j - 1) / (2.0f * dx_));
-                    term = v_weights_(i, j - 1) * (coef_A - 0.5 * coef_B * (comp_rho_(i, j) - comp_rho_(i, j - 1))) + vel_term;
+                    term = v_weights_(i, j - 1) * (coef_A - coef_B * (comp_rho_(i, j) - comp_rho_(i, j - 1))) + vel_term;
 					local_term = centre_term - vel_term - v_weights_(i,j) * v_(i,j) * dt / dx_;
 					float bot_phi = liquid_phi_(i, j - 1);
 					if (bot_phi < 0) {
@@ -1518,7 +1534,7 @@ void FluidSim::solve_compressible_density(scalar dt) {
 
 					// time dependent term
 					matrix_.add_to_element(index, index, 1.0f);
-					rhs_[index] += comp_rho_(i,j); // 移项1/t，方程左边乘t^2
+					rhs_[index] += saved_comp_rho_(i,j); // 移项1/t，方程左边乘t^2
                     //   rhs_[index] += v_weights_(i, j) *(density_(i, j + 1) - density_(i, j - 1))* v_(i, j) / dx_;
 				}
 		}
