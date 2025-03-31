@@ -32,6 +32,7 @@
 
 #include "openglutils.h"
 
+#include <fstream>
 // Change here to try different integration scheme, options:
 // IT_PIC: original particle-in-cell (PIC)
 // IT_FLIP: original fluid-implicit-particle (FLIP)
@@ -57,7 +58,8 @@ const FluidSim::VELOCITY_ORDER velocity_order = FluidSim::VO_EULER;
 // IO_QUADRATIC: quadratic interpolation
 const FluidSim::INTERPOLATION_ORDER interpolation_order = FluidSim::IO_LINEAR;
 
-const scalar lagrangian_ratio = 0.97f;
+//const scalar lagrangian_ratio = 0.97f;
+const scalar lagrangian_ratio = 1.0f;
 const int particle_correction_step = 1;
 
 // whether collision is resolved with another pass on each particle (instead of
@@ -104,7 +106,7 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   // compressible fluid
   comp_rho_.resize(ni_, nj_);
   saved_comp_rho_.resize(ni_, nj_);
-  comp_pressure_.resize(ni_, nj_); // 需要初始化其大小？
+  comp_pressure_.resize(ni_, nj_); // 需要初始化其大小
 
   // debug arrays
   laplacianP_.resize(ni_,nj_);
@@ -114,13 +116,12 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   b = 949.7;
   a = 2977.4;  // at room temperature
 
-  //测试代码
-  // 在0到1.5区间上对coef_B函数绘制曲线
-  for (int i = 0; i < 100; i++) {
-    scalar x = i * 0.015;
+
+  // 在0.9到1.1区间上对coef_B函数绘制曲线
+  /*for (int i = 0; i < 0.2 / 0.00005; i++) {
+    scalar x = 0.9 + i * 0.00005;
     std::cout << x << ", " << compute_coef_A(x) << ", " << compute_coef_B(x) << ", " << get_pressure(x) << std::endl;
-  }
-  std::cout << std::endl;
+  }*/
 }
 
 /*!
@@ -228,7 +229,7 @@ void FluidSim::advance(scalar dt) {
   // Set up and solve the variational pressure solve.
   tick();
 #ifdef COMPRESSIBLE_FLUID
-  solve_compressible_density(dt);  // 启用不可压缩求解，更新comp_rho_
+  solve_compressible_density_new2(dt);  // 启用不可压缩求解，更新comp_rho_
 #else
   solve_pressure(dt);
 #endif
@@ -783,6 +784,17 @@ void FluidSim::solve_pressure(scalar dt) {
     }
   });
 
+  // 检查矩阵是否正定
+  if (!is_symmetric(matrix_)) {
+    std::cout << "Matrix is not symmetric." << std::endl;
+  } else {
+    std::cout << "Matrix is symmetric." << std::endl;
+  }
+  /*if (outframe_ == 10 ) {
+    output_matrix_and_rhs_to_csv("D:/FluidSimulator/new_apic2d/matrix_" + std::to_string(outframe_) + ".csv",
+                                 "D:/FluidSimulator/new_apic2d/rhs_" + std::to_string(outframe_) + ".csv");
+  }*/
+
   // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
   scalar residual;
   int iterations;
@@ -869,11 +881,11 @@ void FluidSim::init_random_particles() {
         Vector2s pt = Vector2s(x_, y) + origin_;
 
         scalar phi = solid_distance(pt);
-        if (phi > dx_ * 20.0) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_);
+        if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_);
       }
     }
   }
-}
+} 
 
 void FluidSim::map_p2g() {
   if (interpolation_order == IO_LINEAR)
@@ -1039,6 +1051,9 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
         if (lagrangian_ratio > 0.0) {
             scalar original_grid_rho = get_saved_density(p.x_);
             p.dens_ = next_grid_rho + (lagrangian_rho - original_grid_rho) * lagrangian_ratio;
+            /*if (next_grid_rho - original_grid_rho > 0) {
+              std::cout << "网格密度更新值：" << next_grid_rho - original_grid_rho << std::endl;
+            }*/
         } else {
             p.dens_ = next_grid_rho;
         }
@@ -1077,12 +1092,12 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
         }
     });
 #ifdef COMPRESSIBLE_FLUID
-    std::cout << "sum_rho: " << sum_rho << std::endl;
+    std::cout << "sum_rho in particles: " << sum_rho << std::endl;
     //奇怪现象：加了个循环语句后，求解反而稳定了一些？
     for (int i = 0; i < particles_.size(); ++i) {
-    //  // 质量守恒
-    //  particles_[i].dens_ = particles_[i].dens_ / sum_rho * (particles_.size() * 1.0); //原密度为1
-    //  particles_[i].mass_ = M_PI * particles_[i].radii_ * particles_[i].radii_ * particles_[i].dens_;
+      // 质量守恒
+     //particles_[i].dens_ = particles_[i].dens_ / sum_rho * (particles_.size() * 1.0); //原密度为1
+     //particles_[i].mass_ = M_PI * particles_[i].radii_ * particles_[i].radii_ * particles_[i].dens_;
     }
 #endif
 }
@@ -1271,6 +1286,22 @@ scalar FluidSim::compute_coef_B(const scalar& rho) {
     return 2.0f * R * background_T * b * b / ((b - rho) * (b - rho) * (b - rho)) - 2.0f * a * b * b * b * numerator / (denominator * denominator * denominator);
 }
 
+scalar FluidSim::compute_coef_A2(const scalar& rho) { 
+    scalar A_l = 0, rho_l = 1.0, xi = 0.01, eta = 10.0;
+    A_l = xi * (1 - eta) / eta * compute_coef_A(rho_l);
+    scalar numerator = A_l * rho_l * rho_l * xi * (1 - xi);
+    scalar denominator = (1 - xi) * rho_l - rho;
+    return numerator / denominator * denominator + A_l;
+}
+
+scalar FluidSim::compute_coef_B2(const scalar& rho) { 
+    scalar A_l = 0, rho_l = 1.0, xi = 0.01, eta = 10.0; 
+    A_l = xi * (1 - eta) / eta * compute_coef_A(rho_l);
+    scalar numerator = A_l * rho_l * rho_l * xi * (1 - xi);
+    scalar denominator = (1 - xi) * rho_l - rho;
+    return -2 * numerator / denominator * denominator * denominator;
+}
+
 /*! Output Data Bgeo */
 void FluidSim::OutputPointDataBgeo(const std::string& s, const int frame) {
     std::string file = s + std::to_string(frame) + ".bgeo";
@@ -1447,23 +1478,19 @@ void FluidSim::solve_compressible_density(scalar dt) {
 				comp_rho_solution_[index] = 0;
 				float centre_phi = liquid_phi_(i, j);
 				float t2dx2 = dt * dt / (dx_ * dx_);
-				float coef_A = t2dx2 * compute_coef_A(comp_rho_(i, j));
-				float coef_B = (t2dx2 ) * compute_coef_B(comp_rho_(i, j));
-                if (comp_rho_ (i, j) > 0.0f) {
-                    std::cout << "rho: " << comp_rho_(i, j) << " coef_A: " << compute_coef_A(comp_rho_(i, j))
-                                << " coef_B: " << compute_coef_B(comp_rho_(i, j)) << std::endl;
-                    }
+				float coef_A = t2dx2 * (compute_coef_A(comp_rho_(i, j)) + compute_coef_A2(comp_rho_(i, j)));
+                float coef_B = (t2dx2) * (compute_coef_B(comp_rho_(i, j)) + compute_coef_B2(comp_rho_(i, j)));
 				if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
 					// right neighbour
-                    //coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i + 1, j))/2);
-                    //coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i + 1, j)) / 2);
+                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i + 1, j))/2);
+                    coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i + 1, j)) / 2);
 					float centre_term = u_weights_(i + 1, j) * coef_A;
 					float vel_term = 0.0f;  // u_weights_(i + 1, j) * (t2dx2 * u_(i + 1, j) / (2.0f * dx_));  有什么用？
                     // u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_是速度散度项
 					//float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  
 					float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  
 
-					float term = u_weights_(i + 1, j) * (coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))) - vel_term;
+					float term = u_weights_(i + 1, j) * (coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i-1, j))) - vel_term;
 					float right_phi = liquid_phi_(i + 1, j);
                     // liquid_phi_小于0时，是液体单元格
                     if (right_phi < 0) {
@@ -1479,10 +1506,10 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					laplacianP_(i,j) += u_weights_(i + 1, j) * ((coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j)))*comp_rho_(i+1,j)-coef_A * comp_rho_(i,j));
 
 					// left neighbour
-                    //coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
-                    //coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
+                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
+                    coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5);
 					vel_term = 0.0f;//u_weights_(i, j) * (t2dx2 * u_(i, j) / (2.0f * dx_));
-					term = u_weights_(i + 1, j) * (coef_A -  coef_B * (comp_rho_(i, j) - comp_rho_(i - 1, j))) + vel_term;
+					term = u_weights_(i + 1, j) * (coef_A -  coef_B * (comp_rho_(i+1, j) - comp_rho_(i - 1, j))) + vel_term;
 					//local_term = centre_term - vel_term -u_weights_(i,j) * u_(i,j) * dt / dx_;
 					local_term = centre_term - vel_term -u_weights_(i,j) * u_(i,j) * dt / dx_;
 					float left_phi = liquid_phi_(i - 1, j);
@@ -1497,10 +1524,10 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					laplacianP_(i,j) += u_weights_(i, j) * ((coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i-1, j)))*comp_rho_(i-1,j)-coef_A * comp_rho_(i,j));
 
 					// top neighbour
-                    //coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
-                    //coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
+                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
+                    coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j+1)) / 2);
 					vel_term = 0.0f;//v_weights_(i, j + 1) * (t2dx2 * v_(i, j + 1) / (2.0f * dx_));
-                    term = v_weights_(i, j + 1) * (coef_A + coef_B * (comp_rho_(i, j + 1) - comp_rho_(i, j))) - vel_term;
+                    term = v_weights_(i, j + 1) * (coef_A + coef_B * (comp_rho_(i, j + 1) - comp_rho_(i, j-1))) - vel_term;
 					// local_term = centre_term + vel_term + v_weights_(i,j+1) * v_(i,j+1) * dt / dx_;
 					local_term = centre_term + vel_term + v_weights_(i,j+1) * v_(i,j+1) * dt / dx_;
 					
@@ -1516,10 +1543,10 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					laplacianP_(i,j) += v_weights_(i, j+1) * ((coef_A + coef_B * (comp_rho_(i, j+1) - comp_rho_(i, j)))*comp_rho_(i,j+1)-coef_A * comp_rho_(i,j));
 
 					// bottom neighbour
-                    //coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
-                    //coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
+                    coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
+                    coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i, j - 1)) / 2);
 					vel_term = 0.0f;//v_weights_(i, j - 1) * (t2dx2 * v_(i, j - 1) / (2.0f * dx_));
-                    term = v_weights_(i, j - 1) * (coef_A - coef_B * (comp_rho_(i, j) - comp_rho_(i, j - 1))) + vel_term;
+                    term = v_weights_(i, j - 1) * (coef_A - coef_B * (comp_rho_(i, j+1) - comp_rho_(i, j - 1))) + vel_term;
 					local_term = centre_term - vel_term - v_weights_(i,j) * v_(i,j) * dt / dx_;
 					float bot_phi = liquid_phi_(i, j - 1);
 					if (bot_phi < 0) {
@@ -1535,11 +1562,16 @@ void FluidSim::solve_compressible_density(scalar dt) {
 					// time dependent term
 					matrix_.add_to_element(index, index, 1.0f);
 					rhs_[index] += saved_comp_rho_(i,j); // 移项1/t，方程左边乘t^2
-                    //   rhs_[index] += v_weights_(i, j) *(density_(i, j + 1) - density_(i, j - 1))* v_(i, j) / dx_;
 				}
 		}
 	});
-
+    
+    // 检查矩阵是否正定
+    if (!is_symmetric(matrix_)) {
+        std::cout << "Matrix is not symmetric." << std::endl;
+    } else {
+        std::cout << "Matrix is symmetric." << std::endl;
+    }
 	// Solve the system using Robert Bridson's incomplete Cholesky PCG solver
 	scalar residual;
 	int iterations;
@@ -1547,18 +1579,8 @@ void FluidSim::solve_compressible_density(scalar dt) {
 	if (!success) {
 		std::cout << "WARNING: Density solve failed! residual = " << residual << ", iters = " << iterations << std::endl;
        } else {
-          std::cout << "Density solve succeeded! residual = " << residual << ", iters = " << iterations << std::endl;
+          //std::cout << "Density solve succeeded! residual = " << residual << ", iters = " << iterations << std::endl;
         }
-    // 求解后的密度修正
-    //for (int j = 0; j < nj_; ++j) {
-    //    for (int i = 0; i < ni_; ++i) {
-    //        int index = i + j * ni_;
-    //        comp_rho_solution_[index] += 0.005;
-    //        if (comp_rho_solution_[index] < 0.0) {
-    //          comp_rho_solution_[index] = 1.0;
-    //        }
-    //      }
-    //    }
     //std::cout << "初始密度下的压强："<< get_pressure(1.0) << std::endl; //结果为0
 	comp_pressure_.set_zero();
 	// Calculate pressure field using DVS equation
@@ -1623,4 +1645,412 @@ void FluidSim::solve_compressible_density(scalar dt) {
 			}
 		}
 	});
+}
+//不使用||lapcian rho||的n+1时刻的近似
+void FluidSim::solve_compressible_density_new(scalar dt) {
+  int system_size = ni_ * nj_;
+  if (rhs_.size() != system_size) {
+    rhs_.resize(system_size);
+    comp_rho_solution_.resize(system_size);
+    matrix_.resize(system_size);
+  }
+  matrix_.zero();
+
+  // Build the linear system for density
+  parallel_for(1, nj_ - 1, [&](int j) {
+    for (int i = 1; i < ni_ - 1; ++i) {
+      laplacianP_(i, j) = 0.0f;
+      int index = i + ni_ * j;
+      rhs_[index] = 0;
+      comp_rho_solution_[index] = 0;
+      float centre_phi = liquid_phi_(i, j);
+      float t2dx2 = dt * dt / (dx_ * dx_);
+      float coef_A = t2dx2 * (compute_coef_A(comp_rho_(i, j)) + compute_coef_A2(comp_rho_(i, j)));
+      float coef_B = (t2dx2) * (compute_coef_B(comp_rho_(i, j)) + compute_coef_B2(comp_rho_(i, j)));
+      float ave_rho = 0.0f;
+      if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
+        // right neighbour
+        ave_rho = (comp_rho_(i, j) + comp_rho_(i + 1, j)) * 0.5;  // 位于两个相邻单元格边界的平均密度
+        coef_A = t2dx2 * (compute_coef_A(ave_rho) + compute_coef_A2(ave_rho));
+        float centre_term = u_weights_(i + 1, j) * coef_A;
+        // float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;
+        float local_term = centre_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;
+
+        float term = u_weights_(i + 1, j) * (coef_A /*+ coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))*/);
+        float right_phi = liquid_phi_(i + 1, j);
+        // liquid_phi_小于0时，是液体单元格
+        if (right_phi < 0) {
+          matrix_.add_to_element(index, index, local_term);
+          matrix_.add_to_element(index, index + 1, -term);
+        } else {
+          // 邻居单元格是气体时
+          float theta = fraction_inside(centre_phi, right_phi);
+          if (theta < 0.01) theta = 0.01;
+          matrix_.add_to_element(index, index, centre_term / theta);  // doesm't consider divergence term near interface
+        }
+
+        laplacianP_(i, j) +=
+            u_weights_(i + 1, j) * ((coef_A /*+ coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))*/) * comp_rho_(i + 1, j) - coef_A * comp_rho_(i, j));
+
+        // left neighbour
+        ave_rho = (comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5;  // 位于两个相邻单元格边界的平均密度
+        coef_A = t2dx2 * (compute_coef_A(ave_rho) + compute_coef_A2(ave_rho));
+     
+        /*term = u_weights_(i + 1, j) * (coef_A - coef_B * (comp_rho_(i, j) - comp_rho_(i - 1, j)));*/ //TODO:原始写法的索引似乎本来就错了？
+        term = u_weights_(i , j) * coef_A; 
+        // local_term = centre_term - vel_term -u_weights_(i,j) * u_(i,j) * dt / dx_;
+        local_term = centre_term - u_weights_(i, j) * u_(i, j) * dt / dx_;
+        float left_phi = liquid_phi_(i - 1, j);
+        if (left_phi < 0) {
+          matrix_.add_to_element(index, index, local_term);
+          matrix_.add_to_element(index, index - 1, -term);
+        } else {
+          float theta = fraction_inside(centre_phi, left_phi);
+          if (theta < 0.01) theta = 0.01;
+          matrix_.add_to_element(index, index, centre_term / theta);
+        }
+        laplacianP_(i, j) +=
+            u_weights_(i, j) * ((coef_A /*+ coef_B * (comp_rho_(i, j) - comp_rho_(i-1, j))*/) * comp_rho_(i - 1, j) - coef_A * comp_rho_(i, j));
+
+        // top neighbour
+        ave_rho = (comp_rho_(i, j) + comp_rho_(i, j + 1)) * 0.5;  // 位于两个相邻单元格边界的平均密度
+        coef_A = t2dx2 * (compute_coef_A(ave_rho) + compute_coef_A2(ave_rho));
+
+        term = v_weights_(i, j + 1) * (coef_A /*+ coef_B * (comp_rho_(i, j + 1) - comp_rho_(i, j))*/);
+        // local_term = centre_term + vel_term + v_weights_(i,j+1) * v_(i,j+1) * dt / dx_;
+        local_term = centre_term + v_weights_(i, j + 1) * v_(i, j + 1) * dt / dx_;
+
+        float top_phi = liquid_phi_(i, j + 1);
+        if (top_phi < 0) {
+          matrix_.add_to_element(index, index, local_term);
+          matrix_.add_to_element(index, index + ni_, -term);
+        } else {
+          float theta = fraction_inside(centre_phi, top_phi);
+          if (theta < 0.01) theta = 0.01;
+          matrix_.add_to_element(index, index, centre_term / theta);
+        }
+        laplacianP_(i, j) +=
+            v_weights_(i, j + 1) * ((coef_A /*+ coef_B * (comp_rho_(i, j+1) - comp_rho_(i, j))*/) * comp_rho_(i, j + 1) - coef_A * comp_rho_(i, j));
+
+        // bottom neighbour
+        ave_rho = (comp_rho_(i, j) + comp_rho_(i, j - 1)) * 0.5;
+        coef_A = t2dx2 * (compute_coef_A(ave_rho) + compute_coef_A2(ave_rho));
+
+        term = v_weights_(i, j) *coef_A;
+        local_term = centre_term - v_weights_(i, j) * v_(i, j) * dt / dx_;
+        float bot_phi = liquid_phi_(i, j - 1);
+        if (bot_phi < 0) {
+          matrix_.add_to_element(index, index, local_term);
+          matrix_.add_to_element(index, index - ni_, -term);
+        } else {
+          float theta = fraction_inside(centre_phi, bot_phi);
+          if (theta < 0.01) theta = 0.01;
+          matrix_.add_to_element(index, index, centre_term / theta);
+        }
+        laplacianP_(i, j) +=
+            v_weights_(i, j) * ((coef_A + coef_B * (comp_rho_(i, j) - comp_rho_(i, j-1))) * comp_rho_(i, j - 1) - coef_A * comp_rho_(i, j));
+
+        // time dependent term
+        matrix_.add_to_element(index, index, 1.0f);
+        rhs_[index] += -saved_comp_rho_(i, j);  // 移项1/t，方程左边乘t^2
+
+        laplacianP_(i, j) += (u_weights_(i + 1, j) * comp_pressure_(i + 1, j) + u_weights_(i, j) * comp_pressure_(i - 1, j) +
+                              v_weights_(i, j + 1) * comp_pressure_(i, j + 1) + v_weights_(i, j) * comp_pressure_(i, j - 1) - 4 * comp_pressure_(i, j)) /
+                             (dx_ * dx_);
+        rhs_[index] += -coef_B *
+                       ((u_weights_(i + 1, j) * comp_rho_(i + 1, j) - u_weights_(i, j) * comp_rho_(i - 1, j)) * 
+                        (u_weights_(i + 1, j) * comp_rho_(i + 1, j) - u_weights_(i, j) * comp_rho_(i - 1, j)) +
+                        (v_weights_(i, j + 1) * comp_rho_(i, j + 1) - v_weights_(i, j) * comp_rho_(i, j - 1)) *
+                        (v_weights_(i, j + 1) * comp_rho_(i, j + 1) - v_weights_(i, j) * comp_rho_(i, j - 1)));
+        /*rhs_[index] += t2dx2 * compute_coef_A(comp_rho_(i, j)) *
+                       (comp_rho_(i + 1, j) + comp_rho_(i - 1, j) + comp_rho_(i, j + 1) + comp_rho_(i, j - 1) - 4 * comp_rho_(i, j));*/
+        /*rhs_[index] +=
+            t2dx2 * (comp_pressure_(i + 1, j) + comp_pressure_(i - 1, j) + comp_pressure_(i, j + 1) + comp_pressure_(i, j - 1) - 4 * comp_pressure_(i, j));*/
+        
+
+      }
+    }
+  });
+
+  for (int j = 1; j < nj_ - 1; ++j) {
+    for (int i = 1; i < ni_ - 1; ++i) {
+      float centre_phi = liquid_phi_(i, j);
+      if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
+        int index = i + j * ni_;
+      }
+    }
+  }
+
+  // 检查矩阵是否正定
+  if (!is_symmetric(matrix_)) {
+    std::cout << "Matrix is not symmetric." << std::endl;
+  } else {
+    std::cout << "Matrix is symmetric." << std::endl;
+  }
+
+  // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
+  scalar residual;
+  int iterations;
+  bool success = solver_.solve(matrix_, rhs_, comp_rho_solution_, residual, iterations);
+  if (!success) {
+    std::cout << "WARNING: Density solve failed! residual = " << residual << ", iters = " << iterations << std::endl;
+  } else {
+    std::cout << "residual = " << residual << ", iters = " << iterations << std::endl;
+  }
+
+  comp_pressure_.set_zero();
+  // Calculate pressure field using DVS equation
+  scalar sum_rho = 0.0;
+  parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
+    if (j < u_.nj) {
+      for (int i = 1; i < u_.ni - 1; ++i) {
+        int index = i + j * ni_;
+        //comp_rho_(i, j) = comp_rho_solution_[index];
+        sum_rho += comp_rho_(i, j);
+        comp_pressure_(i, j) = get_pressure(comp_rho_solution_[index])*0.0005;
+      }
+    }
+  });
+
+  std::cout << "sum_rho in grid: " << sum_rho << std::endl;
+
+  // 调试用：打印comp_pressure_的最大值
+  scalar max_comp_pressure = 0.0;
+  for (int j = 0; j < nj_; ++j) {
+    for (int i = 0; i < ni_; ++i) {
+      max_comp_pressure = std::max(max_comp_pressure, comp_pressure_(i, j));
+    }
+  }
+  std::cout << "max_comp_pressure: " << max_comp_pressure << std::endl;
+
+  // Apply the velocity update
+  parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
+    if (j < u_.nj) {
+      for (int i = 1; i < u_.ni - 1; ++i) {
+        int index = i + j * ni_;
+        if (u_weights_(i, j) > 0) {
+          if (liquid_phi_(i, j) < 0 || liquid_phi_(i - 1, j) < 0) {
+            float theta = 1;
+            if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
+            if (theta < 0.01) theta = 0.01;
+            u_(i, j) -= dt * (comp_pressure_(i, j) - comp_pressure_(i - 1, j)) / dx_ / theta;
+            // u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: 是否应该再除以密度？
+            u_valid_(i, j) = 1;
+          } else {
+            u_valid_(i, j) = 0;
+          }
+        } else {
+          u_(i, j) = 0;
+          u_valid_(i, j) = 0;
+        }
+      }
+    }
+    if (j >= 1 && j < v_.nj - 1) {
+      for (int i = 0; i < v_.ni; ++i) {
+        int index = i + j * ni_;
+        if (v_weights_(i, j) > 0) {
+          if (liquid_phi_(i, j) < 0 || liquid_phi_(i, j - 1) < 0) {
+            float theta = 1;
+            if (liquid_phi_(i, j) >= 0 || liquid_phi_(i, j - 1) >= 0) theta = fraction_inside(liquid_phi_(i, j - 1), liquid_phi_(i, j));
+            if (theta < 0.01) theta = 0.01;
+            v_(i, j) -= dt * (comp_pressure_(i, j) - comp_pressure_(i, j - 1)) / dx_ / theta;
+            v_valid_(i, j) = 1;
+          } else {
+            v_valid_(i, j) = 0;
+          }
+        } else {
+          v_(i, j) = 0;
+          v_valid_(i, j) = 0;
+        }
+      }
+    }
+  });
+}
+
+void FluidSim::solve_compressible_density_new2(scalar dt) {
+  int system_size = ni_ * nj_;
+  if (rhs_.size() != system_size) {
+    rhs_.resize(system_size);
+    comp_rho_solution_.resize(system_size);
+    matrix_.resize(system_size);
+  }
+  matrix_.zero();
+
+  // Build the linear system for density
+  parallel_for(1, nj_ - 1, [&](int j) {
+    for (int i = 1; i < ni_ - 1; ++i) {
+      laplacianP_(i, j) = 0.0f;
+      int index = i + ni_ * j;
+      rhs_[index] = 0;
+      comp_rho_solution_[index] = 0;
+      float centre_phi = liquid_phi_(i, j);
+      if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
+        laplacianP_(i, j) += (u_weights_(i + 1, j) * comp_pressure_(i + 1, j) + 
+                              u_weights_(i, j    ) * comp_pressure_(i - 1, j) +
+                              v_weights_(i, j + 1) * comp_pressure_(i, j + 1) +
+                              v_weights_(i, j    ) * comp_pressure_(i, j - 1) - 4 * comp_pressure_(i, j)) /
+                             (dx_*dx_);
+        scalar div_vel =
+            (u_weights_(i + 1, j) * u_(i + 1, j) - u_weights_(i, j) * u_(i, j) + v_weights_(i, j + 1) * v_(i, j + 1) - v_weights_(i, j) * v_(i, j)) / dx_;
+        scalar rho_new = (comp_rho_(i, j) + dt * dt * laplacianP_(i, j)) / (1 + dt * div_vel);
+        if (rho_new >= 1.1) {
+          // std::cout << i << ", " << j << " rho_new: " << rho_new << " , diff: " << rho_new - comp_rho_(i, j) << ", laplacianP_: " << laplacianP_(i, j)
+          //           << " , div_vel: " << div_vel << std::endl;
+          /*std::cout << " rho_new: " << rho_new << " , diff: " << rho_new - comp_rho_(i, j) << ", laplacianP_: " << laplacianP_(i, j)
+                    << " , div_vel: " << div_vel << std::endl;*/
+        }
+        comp_rho_(i, j) = rho_new;
+      }
+    }
+  });
+
+  for (int j = 1; j < nj_ - 1; ++j) {
+    for (int i = 1; i < ni_ - 1; ++i) {
+      float centre_phi = liquid_phi_(i, j);
+      if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
+        int index = i + j * ni_;
+      }
+    }
+  }
+
+  // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
+  /*scalar residual;
+  int iterations;
+  bool success = solver_.solve(matrix_, rhs_, comp_rho_solution_, residual, iterations);
+  if (!success) {
+    std::cout << "WARNING: Density solve failed! residual = " << residual << ", iters = " << iterations << std::endl;
+  } else {
+    std::cout << "residual = " << residual << ", iters = " << iterations << std::endl;
+  }*/
+
+  comp_pressure_.set_zero();
+  // Calculate pressure field using DVS equation
+  scalar sum_rho = 0.0;
+  parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
+    if (j < u_.nj) {
+      for (int i = 1; i < u_.ni - 1; ++i) {
+        sum_rho += comp_rho_(i, j);
+        comp_pressure_(i, j) = get_pressure(comp_rho_(i, j)) * 0.0005; // get_pressure对于极小的密度增量都很敏感
+      }
+    }
+  });
+
+  std::cout << "sum_rho in grid: " << sum_rho << std::endl;
+
+  // 调试用：打印comp_pressure_的最大值
+  scalar max_comp_pressure = 0.0;
+  for (int j = 0; j < nj_; ++j) {
+    for (int i = 0; i < ni_; ++i) {
+      max_comp_pressure = std::max(max_comp_pressure, comp_pressure_(i, j));
+    }
+  }
+  std::cout << "max_comp_pressure: " << max_comp_pressure << std::endl;
+
+  parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
+    if (j < u_.nj) {
+      for (int i = 1; i < u_.ni - 1; ++i) {
+        int index = i + j * ni_;
+        if (u_weights_(i, j) > 0) {
+          if (liquid_phi_(i, j) < 0 || liquid_phi_(i - 1, j) < 0) {
+            float theta = 1;
+            if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
+            if (theta < 0.01) theta = 0.01;
+            u_(i, j) -= dt * (comp_pressure_(i, j) - comp_pressure_(i - 1, j)) / dx_ / theta;
+            // u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: 是否应该再除以密度？
+            u_valid_(i, j) = 1;
+          } else {
+            u_valid_(i, j) = 0;
+          }
+        } else {
+          u_(i, j) = 0;
+          u_valid_(i, j) = 0;
+        }
+      }
+    }
+    if (j >= 1 && j < v_.nj - 1) {
+      for (int i = 0; i < v_.ni; ++i) {
+        int index = i + j * ni_;
+        if (v_weights_(i, j) > 0) {
+          if (liquid_phi_(i, j) < 0 || liquid_phi_(i, j - 1) < 0) {
+            float theta = 1;
+            if (liquid_phi_(i, j) >= 0 || liquid_phi_(i, j - 1) >= 0) theta = fraction_inside(liquid_phi_(i, j - 1), liquid_phi_(i, j));
+            if (theta < 0.01) theta = 0.01;
+            v_(i, j) -= dt * (comp_pressure_(i, j) - comp_pressure_(i, j - 1)) / dx_ / theta;
+            v_valid_(i, j) = 1;
+          } else {
+            v_valid_(i, j) = 0;
+          }
+        } else {
+          v_(i, j) = 0;
+          v_valid_(i, j) = 0;
+        }
+      }
+    }
+  });
+}
+
+void FluidSim::output_matrix_and_rhs_to_csv(const std::string& matrix_file, const std::string& rhs_file) {
+  // Output matrix_ to CSV file
+  std::ofstream matrix_out(matrix_file);
+  if (matrix_out.is_open()) {
+    for (int i = 0; i < matrix_.n; ++i) {
+      for (int j = 0; j < matrix_.n; ++j) {
+        matrix_out << matrix_(i, j);
+        if (j < matrix_.n - 1) {
+          matrix_out << ",";
+        }
+      }
+      matrix_out << "\n";
+    }
+    matrix_out.close();
+  } else {
+    std::cerr << "Unable to open file " << matrix_file << std::endl;
+  }
+
+  // Output rhs_ to CSV file
+  std::ofstream rhs_out(rhs_file);
+  if (rhs_out.is_open()) {
+    for (int i = 0; i < rhs_.size(); ++i) {
+      rhs_out << rhs_[i] << "\n";
+    }
+    rhs_out.close();
+  } else {
+    std::cerr << "Unable to open file " << rhs_file << std::endl;
+  }
+}
+
+
+bool FluidSim::is_symmetric(const robertbridson::SparseMatrix<scalar>& matrix) {
+  int n = matrix.n;
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < n; ++j) {
+      if (matrix(i, j) != matrix(j, i)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool FluidSim::is_positive_definite(const robertbridson::SparseMatrix<scalar>& matrix) {
+  int n = matrix.n;
+  std::vector<scalar> L(n * n, 0.0);
+
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j <= i; ++j) {
+      scalar sum = 0.0;
+      for (int k = 0; k < j; ++k) {
+        sum += L[i * n + k] * L[j * n + k];
+      }
+      if (i == j) {
+        L[i * n + j] = std::sqrt(matrix(i, i) - sum);
+        if (L[i * n + j] <= 0) {
+          return false;
+        }
+      } else {
+        L[i * n + j] = (matrix(i, j) - sum) / L[j * n + j];
+      }
+    }
+  }
+  return true;
 }

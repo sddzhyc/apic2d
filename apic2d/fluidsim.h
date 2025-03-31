@@ -187,6 +187,12 @@ class FluidSim {
   void OutputGridXDataBgeo(const std::string& s, const int frame);
   void OutputGridYDataBgeo(const std::string& s, const int frame);
 
+  void output_matrix_and_rhs_to_csv(const std::string& matrix_file, const std::string& rhs_file);
+
+  bool is_symmetric(const robertbridson::SparseMatrix<scalar>& matrix);
+
+  bool is_positive_definite(const robertbridson::SparseMatrix<scalar>& matrix);
+
  protected:
   inline scalar circle_distance(const Vector2s& position, const Vector2s& centre, scalar radius) const { return ((position - centre).norm() - radius); }
 
@@ -256,8 +262,15 @@ class FluidSim {
   // compressible fluid operations
   scalar compute_coef_A(const scalar& rho);
   scalar compute_coef_B(const scalar& rho);
+
+  scalar compute_coef_A2(const scalar& rho);
+  scalar compute_coef_B2(const scalar& rho);
   scalar get_pressure(const scalar& rho);
   void solve_compressible_density(scalar dt);
+  void solve_compressible_density_new(scalar dt);
+
+  void solve_compressible_density_new2(scalar dt);
+
 
  private:
   /*! Boundaries */

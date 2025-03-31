@@ -120,7 +120,7 @@ void timer(int junk) {
   int num_substeps = static_cast<int>(std::ceil(frame_time / max_timestep));
   scalar timestep = frame_time / static_cast<scalar>(num_substeps);
 
-  for (int i = 0; i < num_substeps; ++i) sim.advance(timestep);
+  for (int i = 0; i < num_substeps; ++i) sim.advance(timestep); //执行模拟num_substeps次后渲染一帧
 
   glutSpecialFunc(specialKeys);
 }
