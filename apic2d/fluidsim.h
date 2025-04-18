@@ -16,7 +16,7 @@
 #ifndef APIC2D_FLUIDSIM_H_
 #define APIC2D_FLUIDSIM_H_
 
-#define COMPRESSIBLE_FLUID
+//#define COMPRESSIBLE_FLUID
 
 #define OUT_PUT
 
@@ -33,7 +33,7 @@
 class sorter;
 
 struct Particle {
-  Particle(const Vector2s& x, const Vector2s& v, const scalar& radii, const scalar& density);
+  Particle(const Vector2s& x, const Vector2s& v, const scalar& radii, const scalar& density, const scalar& tempreture);
   Particle();
   Particle(const Particle&);
 
@@ -47,6 +47,7 @@ struct Particle {
   scalar radii_;
   scalar mass_;
   scalar logJ_;
+  scalar temp_;
 };
 
 class FluidSim {
@@ -58,6 +59,7 @@ class FluidSim {
   virtual ~FluidSim();
 
   scalar rho_;
+  scalar T_;
   int outframe_;
 
   enum INTEGRATOR_TYPE {
@@ -131,6 +133,7 @@ class FluidSim {
   void init_random_particles();
   void render();
   void render_boundaries(const Boundary& b);
+  void render2();
   scalar compute_cfl() const;
   scalar solid_distance(const Vector2s& pos) const;
   scalar solid_distance(const Vector2s& pos, const Boundary& b) const;
@@ -293,7 +296,7 @@ class FluidSim {
 
   /*! Static geometry representation */
   Array2s nodal_solid_phi_;
-  Array2s liquid_phi_; // 衡量网格中液体、气体所占比例
+  Array2s liquid_phi_; // 衡量网格中液体、气体所占比例, liquid_phi_小于0时，是液体单元格
   Array2s u_weights_, v_weights_;  // 0表示全部为固体，1表示流体可流动区域
 
   /*! Data arrays for extrapolation */

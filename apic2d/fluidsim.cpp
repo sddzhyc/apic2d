@@ -13,6 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#define _INIT_TEMP 300.0f
+
 #ifdef WIN32
 #define NOMINMAX
 #endif
@@ -115,7 +117,7 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   R = 461.5;
   b = 949.7;
   a = 2977.4;  // at room temperature
-
+  T_ = _INIT_TEMP;  // 初始温度27度
 
   // 在0.9到1.1区间上对coef_B函数绘制曲线
   /*for (int i = 0; i < 0.2 / 0.00005; i++) {
@@ -784,12 +786,6 @@ void FluidSim::solve_pressure(scalar dt) {
     }
   });
 
-  // 检查矩阵是否正定
-  if (!is_symmetric(matrix_)) {
-    std::cout << "Matrix is not symmetric." << std::endl;
-  } else {
-    std::cout << "Matrix is symmetric." << std::endl;
-  }
   /*if (outframe_ == 10 ) {
     output_matrix_and_rhs_to_csv("D:/FluidSimulator/new_apic2d/matrix_" + std::to_string(outframe_) + ".csv",
                                  "D:/FluidSimulator/new_apic2d/rhs_" + std::to_string(outframe_) + ".csv");
@@ -881,7 +877,8 @@ void FluidSim::init_random_particles() {
         Vector2s pt = Vector2s(x_, y) + origin_;
 
         scalar phi = solid_distance(pt);
-        if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_);
+        // 用emplace_back调用了Particle的构造函数
+        if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_, T_); 
       }
     }
   }
@@ -1130,6 +1127,7 @@ void FluidSim::render_boundaries(const Boundary& b) {
 }
 
 void FluidSim::render() {
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // 清除颜色和深度缓冲区
   glPushMatrix();
   glScaled(1.0 / (dx_ * ni_), 1.0 / (dx_ * ni_), 1.0 / (dx_ * ni_));
 
@@ -1165,32 +1163,75 @@ void FluidSim::render() {
     glColor3f(0, 0, 1);
     glPointSize(5);
     glBegin(GL_POINTS);
-    for (unsigned int i = 0; i < particles_.size(); ++i) {
-      glVertex2fv(particles_[i].x_.data());
+    // 线性插值计算颜色
+    bool draw_particles_with_temp_color = true;
+    if (draw_particles_with_temp_color) {
+      glBegin(GL_POINTS);
+      for (unsigned int i = 0; i < particles_.size(); ++i) {
+        // 假设温度范围为 300K（蓝色）到 373K（红色）
+        float t = (particles_[i].temp_ - 300.0f) / (373.0f - 300.0f);  // 归一化温度到[0, 1]
+        t = std::max(std::min(t, 1.0f), 0.0f);                         // 确保t在[0, 1]范围内
+        float r, g, b;
+        if (t < 0.5f) {
+          // 从蓝色到绿色
+          r = 0.0f;
+          g = t * 2.0f;         // 绿色分量从 0 增加到 1
+          b = 1.0f - t * 2.0f;  // 蓝色分量从 1 减少到 0
+        } else {
+          // 从绿色到红色
+          r = (t - 0.5f) * 2.0f;         // 红色分量从 0 增加到 1
+          g = 1.0f - (t - 0.5f) * 2.0f;  // 绿色分量从 1 减少到 0
+          b = 0.0f;
+        }
+        glColor3f(r, g, b);               // 设置颜色
+        glVertex2fv(particles_[i].x_.data());  // 绘制粒子
+      }
+    } else {
+        for (unsigned int i = 0; i < particles_.size(); ++i) {
+          glVertex2fv(particles_[i].x_.data());
+        }
     }
     glEnd();
   }
 
+  /* // 绘制网格单元上的液体 
+  glBegin(GL_POINTS);
+  for (int i = 0; i < ni_; i++) {
+    for (int j = 0; j < nj_; j++) {
+      Vector2s pos = Vector2s(i + 0.5, j + 0.5) * dx_;
+      if (solid_distance(pos) <= 0) {
+        glColor3f(0.78f, 0.78f, 0.78f);  // 灰色
+      } else if (liquid_phi_(i, j) < 0) {
+        glColor3f(0.0f, 0.0f, 0.78f);  // 蓝色
+      }
+      //glVertex2f(static_cast<float>(i) / (dx_ * ni_), static_cast<float>(j) / (dx_ * nj_));
+      glVertex2f(static_cast<float>(i) *dx_ , static_cast<float>(j) * dx_);
+    }
+  }
+  glEnd();*/
   glPopMatrix();
+  //glFlush();
 }
+void FluidSim::render2() {
+  }
 
 FluidSim::Boundary::Boundary(const Vector2s& center, const Vector2s& parameter, BOUNDARY_TYPE type, bool inside)
     : center_(center), parameter_(parameter), type_(type), sign_(inside ? -1.0 : 1.0) {}
 
 FluidSim::Boundary::Boundary(Boundary* op0, Boundary* op1, BOUNDARY_TYPE type) : op0_(op0), op1_(op1), type_(type), sign_(op0 ? op0->sign_ : false) {}
 
-Particle::Particle(const Vector2s& x, const Vector2s& v, const scalar& radii, const scalar& density)
-    : x_(x), v_(v), radii_(radii), mass_(4.0 / 3.0 * M_PI * radii * radii * radii * density), logJ_(0), dens_(density) {
+Particle::Particle(const Vector2s& x, const Vector2s& v, const scalar& radii, const scalar& density, const scalar& tempreture)
+    : x_(x), v_(v), radii_(radii), mass_(4.0 / 3.0 * M_PI * radii * radii * radii * density), logJ_(0), dens_(density), temp_(tempreture) {
   c_.setZero();
   buf0_.setZero();
 }
 
-Particle::Particle() : x_(Vector2s::Zero()), v_(Vector2s::Zero()), radii_(0.0), mass_(0.0), dens_(0.0), logJ_(0.0) {
+Particle::Particle() : x_(Vector2s::Zero()), v_(Vector2s::Zero()), radii_(0.0), mass_(0.0), dens_(0.0), logJ_(0.0), temp_(0) {
   c_.setZero();
   buf0_.setZero();
 }
 
-Particle::Particle(const Particle& p) : x_(p.x_), v_(p.v_), radii_(p.radii_), mass_(p.mass_), dens_(p.dens_), logJ_(0.0) {
+Particle::Particle(const Particle& p) : x_(p.x_), v_(p.v_), radii_(p.radii_), mass_(p.mass_), dens_(p.dens_), logJ_(0.0), temp_(p.temp_) {
   c_.setZero();
   buf0_.setZero();
 }
