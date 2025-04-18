@@ -106,6 +106,7 @@ void display(void) { sim.render(); }
 
 void specialKeys(int key, int x, int y) {
   if (key == GLUT_KEY_F1) {
+    //if (true) {
     sim.OutputPointDataBgeo("D:/FluidSimulator/new_apic2d/point/pointData", sim.outframe_);
     sim.OutputGridXDataBgeo("D:/FluidSimulator/new_apic2d/gridX/gridXData", sim.outframe_);
     sim.OutputGridYDataBgeo("D:/FluidSimulator/new_apic2d/gridY/gridYData", sim.outframe_);

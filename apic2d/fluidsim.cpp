@@ -229,7 +229,7 @@ void FluidSim::advance(scalar dt) {
   // Set up and solve the variational pressure solve.
   tick();
 #ifdef COMPRESSIBLE_FLUID
-  solve_compressible_density_new2(dt);  // 启用不可压缩求解，更新comp_rho_
+  solve_compressible_density_new(dt);  // 启用不可压缩求解，更新comp_rho_
 #else
   solve_pressure(dt);
 #endif
@@ -1096,8 +1096,8 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
     //奇怪现象：加了个循环语句后，求解反而稳定了一些？
     for (int i = 0; i < particles_.size(); ++i) {
       // 质量守恒
-     //particles_[i].dens_ = particles_[i].dens_ / sum_rho * (particles_.size() * 1.0); //原密度为1
-     //particles_[i].mass_ = M_PI * particles_[i].radii_ * particles_[i].radii_ * particles_[i].dens_;
+     particles_[i].dens_ = particles_[i].dens_ / sum_rho * (particles_.size() * 1.0); //原密度为1
+     particles_[i].mass_ = M_PI * particles_[i].radii_ * particles_[i].radii_ * particles_[i].dens_;
     }
 #endif
 }
@@ -1782,11 +1782,11 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
   }
 
   // 检查矩阵是否正定
-  if (!is_symmetric(matrix_)) {
+  /*if (!is_symmetric(matrix_)) {
     std::cout << "Matrix is not symmetric." << std::endl;
   } else {
     std::cout << "Matrix is symmetric." << std::endl;
-  }
+  }*/
 
   // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
   scalar residual;
@@ -1807,7 +1807,7 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
         int index = i + j * ni_;
         //comp_rho_(i, j) = comp_rho_solution_[index];
         sum_rho += comp_rho_(i, j);
-        comp_pressure_(i, j) = get_pressure(comp_rho_solution_[index])*0.0005;
+        comp_pressure_(i, j) = get_pressure(comp_rho_solution_[index]);
       }
     }
   });
