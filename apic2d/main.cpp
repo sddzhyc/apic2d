@@ -23,8 +23,15 @@
 
 #include "array2_utils.h"
 #include "fluidsim.h"
-#include "gluvi.h"
-#include "openglutils.h"
+
+#define RENDER
+
+#ifdef RENDER
+#include "RenderWidget.h"
+#else
+    #include "gluvi.h"
+    #include "openglutils.h"
+#endif
 
 using namespace std;
 
@@ -40,12 +47,15 @@ scalar step_limit = 0.01;
 
 FluidSim sim;
 
+#ifdef RENDER
+#else
 // Gluvi stuff
 //-------------
 Gluvi::PanZoom2D cam(0.0, 0.0, 1.2);
 void display();
 void timer(int junk);
 
+#endif
 using Clock = std::chrono::high_resolution_clock;
 using TimePoint = std::chrono::time_point<Clock>;
 
@@ -60,6 +70,8 @@ scalar rad0 = 40;
 Vector2s o0(0.0, 0.0);
 scalar brush_radius = 2.5;
 
+#ifdef RENDER
+#else
 void MouseFunc(int button, int state, int x, int y) {
   cam.transform_mouse(x, y, old_mouse.data());
   old_mouse_time = Clock::now();
@@ -77,10 +89,55 @@ void DragFunc(int x, int y) {
   old_mouse = new_mouse;
   old_mouse_time = new_mouse_time;
 }
-
+#endif
 // Main testing code
 //-------------
 int main(int argc, char **argv) {
+#ifdef RENDER
+  RenderWidget renderer;
+  renderer.Init();
+
+  //Fluid2d::ParticalSystem ps;
+  //ps.SetContainerSize(glm::vec2(-1.0, -1.0), glm::vec2(2.0, 2.0));
+  //ps.AddFluidBlock(glm::vec2(-0.2, -0.2), glm::vec2(0.4, 0.4), glm::vec2(-2.0f, -10.0f), 0.01f * 0.7f);
+  //std::cout << "partical num = " << ps.mPositions.size() << std::endl;
+
+    // Set up the simulation
+  sim.initialize(o0, grid_width, grid_resolution, grid_resolution, 1.0);
+  sim.set_root_boundary(std::move(FluidSim::Boundary(c0, Vector2s(rad0, 0.0), FluidSim::BT_CIRCLE, true)));
+  sim.update_boundary();
+  sim.init_random_particles();
+
+  while (!renderer.ShouldClose()) {
+    renderer.ProcessInput();  // 处理输入事件
+
+    scalar max_timestep = std::min(step_limit, sim.compute_cfl() * cfl_number);
+    int num_substeps = static_cast<int>(std::ceil(frame_time / max_timestep));
+    scalar timestep = frame_time / static_cast<scalar>(num_substeps);
+    for (int i = 0; i < num_substeps; i++) {  // 求解
+      sim.advance(timestep);
+    }
+
+    // 提取粒子位置和密度信息并转换为LoadVertexes_new所需的参数类型  
+    std::vector<glm::vec2> particlePositions;  
+    std::vector<float> particleDensities;  
+    // 获取粒子列表  
+    const auto& particles = sim.get_particles();
+    // 遍历粒子并提取位置和密度  
+    for (const auto& particle : particles) {  
+        glm::vec2 position(particle.x_[0], particle.x_[1]);  
+        float density = static_cast<float>(particle.dens_);  
+
+        particlePositions.push_back(position);  
+        particleDensities.push_back(density);  
+    }
+    // 调用LoadVertexes_new方法  
+    renderer.LoadVertexes_new(particlePositions, particleDensities);
+
+    renderer.Update();
+    renderer.PollEvents();
+  }
+#else
   // Setup viewer stuff
   Gluvi::init("Basic Fluid Solver with Static Variational Boundaries", &argc, argv);
   Gluvi::camera = &cam;
@@ -98,12 +155,15 @@ int main(int argc, char **argv) {
 
   glutTimerFunc(1000, timer, 0);
   Gluvi::run();
+#endif
 
   return 0;
 }
 
 void display(void) { sim.render(); }
 
+#ifdef RENDER
+#else
 void specialKeys(int key, int x, int y) {
   if (key == GLUT_KEY_F1) {
     //if (true) {
@@ -125,3 +185,4 @@ void timer(int junk) {
 
   glutSpecialFunc(specialKeys);
 }
+#endif

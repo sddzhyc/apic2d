@@ -13,7 +13,7 @@ RenderWidget::~RenderWidget() {
 }
 
 int32_t RenderWidget::Init() {
-    if (!CreateWindow()) {
+    if (!CreateRenderWindow()) {
         return -1;
     }
     
@@ -71,16 +71,16 @@ int32_t RenderWidget::Init() {
 }
 
 void RenderWidget::Update() {
-    //// »­Á£×Ó
-    //glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    //glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
-    //glEnable(GL_DEPTH_TEST);
-    //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // »­Á£×Ó
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
+    glEnable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    //glBindVertexArray(mVaoParticals);
-    //mParticalShader->Use();
-    //glEnable(GL_PROGRAM_POINT_SIZE);
-    //glDrawArrays(GL_POINTS, 0, mParticalNum);
+    glBindVertexArray(mVaoParticals);
+    mParticalShader->Use();
+    glEnable(GL_PROGRAM_POINT_SIZE);
+    glDrawArrays(GL_POINTS, 0, mParticalNum);
 
     // »­Á£×ÓÇò
     glBindFramebuffer(GL_FRAMEBUFFER, mFboSdf);
@@ -156,7 +156,23 @@ void RenderWidget::LoadVertexes(Fluid2d::ParticalSystem& ps) {
     mParticalNum = ps.mPositions.size();
 }
 
-bool RenderWidget::CreateWindow() {
+void RenderWidget::LoadVertexes_new(std::vector<glm::vec2>& mPositions, std::vector<float>& mDensity) {
+  glBindVertexArray(mVaoParticals);
+  glBindBuffer(GL_ARRAY_BUFFER, mPositionBuffer);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(glm::vec2) * mPositions.size(), mPositions.data(), GL_STATIC_DRAW);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(0);
+
+  glBindBuffer(GL_ARRAY_BUFFER, mDensityBuffer);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * mDensity.size(), mDensity.data(), GL_STATIC_DRAW);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(float), (void*)0);
+  glEnableVertexAttribArray(1);
+  glBindVertexArray(0);
+
+  mParticalNum = mPositions.size();
+}
+
+bool RenderWidget::CreateRenderWindow() {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);

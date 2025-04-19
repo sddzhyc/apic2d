@@ -947,12 +947,12 @@ void FluidSim::map_p2g_linear() {
         }
       });
       grid_temp_(i, j) = grid_mass ? sum_T_x_mass / grid_mass : 0.0;
-      if (grid_temp_(i, j) > 0.1 && grid_temp_(i, j) < 299.99f)
-        std::cout << "grid_temp_:" << grid_temp_(i, j) << std::endl;
+      /*if (grid_temp_(i, j) > 0.1 && grid_temp_(i, j) < 299.99f)
+        std::cout << "grid_temp_:" << grid_temp_(i, j) << std::endl;*/
     }
   });
 
-  std::cout <<"一轮模拟结束！" << std::endl;
+  //std::cout <<"一轮模拟结束！" << std::endl;
 }
 
 void FluidSim::map_p2g_quadratic() {

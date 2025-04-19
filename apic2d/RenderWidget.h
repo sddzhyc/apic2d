@@ -31,8 +31,10 @@ public:
 
     void LoadVertexes(Fluid2d::ParticalSystem& ps);
 
+    void LoadVertexes_new(std::vector<glm::vec2>& mPositions, std::vector<float>& mDensity);
+
 private:
-    bool CreateWindow();
+    bool CreateRenderWindow(); // 原名称CreateWindow似乎会与原项目的其他库函数冲突
 
     float CalculateFPS();
 
