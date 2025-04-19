@@ -42,7 +42,7 @@
 // IT_APIC: affine particle-in-cell (APIC)
 // IT_AFLIP: affine fluid-implicit-particle (AFLIP)
 // IT_ASFLIP: affine separable fluid-implicit-particle (ASFLIP)
-const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_FLIP;
+const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_APIC;
 
 // Change here to try different order for velocity evaluation from grid,
 // options:
@@ -109,6 +109,7 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   comp_rho_.resize(ni_, nj_);
   saved_comp_rho_.resize(ni_, nj_);
   comp_pressure_.resize(ni_, nj_); // 需要初始化其大小
+  grid_temp_.resize(ni_, nj_);
 
   // debug arrays
   laplacianP_.resize(ni_,nj_);
@@ -665,6 +666,13 @@ scalar FluidSim::get_density(const Vector2s& position) {
   return dens_value;
 }
 
+scalar FluidSim::get_temperature(const Vector2s& position) {
+  Vector2s p = (position - origin_) / dx_;
+  Vector2s p0 = p - Vector2s(0.5, 0.5);
+  scalar temp_value = interpolate_value(p0, grid_temp_);
+  return temp_value;
+}
+
 scalar FluidSim::get_saved_density(const Vector2s& position) {
   Vector2s p = (position - origin_) / dx_;
   Vector2s p0 = p - Vector2s(0.5, 0.5);  // 交错网格，密度网格中的(i, j)是压强网格坐标中的 (i - 1/2, j - 1/2)
@@ -925,7 +933,26 @@ void FluidSim::map_p2g_linear() {
 
       v_(i, j) = sumw ? sumu / sumw : 0.0;
     }
+  
+    // 温度传递
+    for (int i = 0; i < ni_; ++i) {
+      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;
+      scalar grid_mass = 0.0;
+      scalar sum_T_x_mass = 0.0;
+      m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) {
+        for (const Particle* p : neighbors) {
+          scalar w = kernel::linear_kernel(p->x_ - pos, dx_);
+          grid_mass += w * p->mass_;
+          sum_T_x_mass += p->temp_ * p->mass_ * w;
+        }
+      });
+      grid_temp_(i, j) = grid_mass ? sum_T_x_mass / grid_mass : 0.0;
+      if (grid_temp_(i, j) > 0.1 && grid_temp_(i, j) < 299.99f)
+        std::cout << "grid_temp_:" << grid_temp_(i, j) << std::endl;
+    }
   });
+
+  std::cout <<"一轮模拟结束！" << std::endl;
 }
 
 void FluidSim::map_p2g_quadratic() {
@@ -1030,16 +1057,25 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
     parallel_for(0, static_cast<int>(particles_.size()), [&](int i) {
         auto& p = particles_[i];
 
-    Matrix2s C = Matrix2s::Zero();  // APIC使用
+        Matrix2s C = Matrix2s::Zero();  // APIC使用
         Vector2s next_grid_velocity = get_velocity_and_affine_matrix_with_order(p.x_, dt, velocity_order, interpolation_order, use_affine ? (&C) : nullptr);
         Vector2s lagrangian_velocity = p.v_;
         Vector2s original_grid_velocity;
 
         if (lagrangian_ratio > 0.0) {
             original_grid_velocity = get_saved_velocity_with_order(p.x_, interpolation_order);
-      p.v_ = next_grid_velocity + (lagrangian_velocity - original_grid_velocity) * lagrangian_ratio;  // flip：只转换增量部分
+            p.v_ = next_grid_velocity + (lagrangian_velocity - original_grid_velocity) * lagrangian_ratio;  // flip：只转换增量部分
         } else {
             p.v_ = next_grid_velocity;
+        }
+        // 温度传递回粒子
+        scalar lagrangian_temp = p.temp_;
+        scalar next_grid_temp = get_temperature(p.x_);
+        if (lagrangian_ratio > 0.0) {
+          scalar original_grid_temp = next_grid_temp;  // TODO:实现flip需要的saved_temp存储，目前暂时用next_grid_temp代替
+          p.temp_ = next_grid_temp + (lagrangian_temp - original_grid_temp) * lagrangian_ratio;
+        } else {
+          p.temp_ = next_grid_temp;
         }
 
 #ifdef COMPRESSIBLE_FLUID
@@ -1169,7 +1205,7 @@ void FluidSim::render() {
       glBegin(GL_POINTS);
       for (unsigned int i = 0; i < particles_.size(); ++i) {
         // 假设温度范围为 300K（蓝色）到 373K（红色）
-        float t = (particles_[i].temp_ - 300.0f) / (373.0f - 300.0f);  // 归一化温度到[0, 1]
+        float t = (particles_[i].temp_ - 273.0f) / (373.0f - 273.0f);  // 归一化温度到[0, 1]
         t = std::max(std::min(t, 1.0f), 0.0f);                         // 确保t在[0, 1]范围内
         float r, g, b;
         if (t < 0.5f) {
@@ -1349,24 +1385,27 @@ void FluidSim::OutputPointDataBgeo(const std::string& s, const int frame) {
     std::cout << "Writing to: " << file << std::endl;
 
     Partio::ParticlesDataMutable* parts = Partio::create();
-  Partio::ParticleAttribute pos, vel, rho, mass;
+  Partio::ParticleAttribute pos, vel, rho, mass, temperature;
     pos = parts->addAttribute("position", Partio::VECTOR, 3);
     vel = parts->addAttribute("velocity", Partio::VECTOR, 3);
     rho = parts->addAttribute("rho", Partio::FLOAT, 1);
-  mass = parts->addAttribute("mass", Partio::FLOAT, 1);
+    mass = parts->addAttribute("mass", Partio::FLOAT, 1);
+    temperature = parts->addAttribute("temperature", Partio::FLOAT, 1);
 
     for (int i = 0; i < particles_.size(); i++) {
         auto& p = particles_[i];
         Vector2s p_x = p.x_;
         Vector2s p_v = p.v_;
         scalar p_rho = p.dens_;
-    scalar p_mass = p.mass_;
+        scalar p_temp = p.temp_;
+        scalar p_mass = p.mass_;
 
 		int idx = parts->addParticle();
 		float* x = parts->dataWrite<float>(pos, idx);
 		float* v = parts->dataWrite<float>(vel, idx);
         float* dens = parts->dataWrite<float>(rho, idx);
-    float* m = parts->dataWrite<float>(mass, idx);
+        float* m = parts->dataWrite<float>(mass, idx);
+        float* temp = parts->dataWrite<float>(temperature, idx);
 
 		x[0] = p_x[0];
 		x[1] = p_x[1];
@@ -1376,6 +1415,7 @@ void FluidSim::OutputPointDataBgeo(const std::string& s, const int frame) {
 		v[2] = 0.0f;
         *dens = p_rho;
         *m = p_mass;
+        *temp = p_temp;
 	}
 
   Partio::write(file.c_str(), *parts);

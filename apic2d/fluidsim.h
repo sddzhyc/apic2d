@@ -180,6 +180,7 @@ class FluidSim {
   /*! Compressible fluid operations */
   void map_p2g_compressible();
   scalar get_density(const Vector2s& position);
+  scalar get_temperature(const Vector2s& position);
   scalar get_saved_density(const Vector2s& position);
   
 
@@ -309,6 +310,7 @@ class FluidSim {
   Array2s saved_comp_rho_;
   Array2s comp_pressure_;
   scalar a, b, R;
+  Array2s grid_temp_;
 
   /*! debug arrays*/
   Array2s laplacianP_;
