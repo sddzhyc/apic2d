@@ -18,19 +18,20 @@ int32_t RenderWidget::Init() {
     }
     
     // 初始化shader
-    std::string particalVertShaderPath = "../code/Fluid2d/Shaders/DrawParticals.vert";
-    std::string particalFragShaderPath = "../code/Fluid2d/Shaders/DrawParticals.frag";
+    //注意: APIC2D的项目工作目录是：D:\Documents\GitHub\apic2d\build\apic2d
+    std::string particalVertShaderPath = "../../apic2d/Shaders/DrawParticals.vert";
+    std::string particalFragShaderPath = "../../apic2d/Shaders/DrawParticals.frag";
     mParticalShader = new Glb::Shader();
     mParticalShader->BuildFromFile(particalVertShaderPath, particalFragShaderPath);
 
-    std::string ballVertShaderPath = "../code/Fluid2d/Shaders/DrawSdf.vert";
-    std::string ballGeomShaderPath = "../code/Fluid2d/Shaders/DrawSdf.geom";
-    std::string ballFragShaderPath = "../code/Fluid2d/Shaders/DrawSdf.frag";
+    std::string ballVertShaderPath = "../../apic2d/Shaders/DrawSdf.vert";
+    std::string ballGeomShaderPath = "../../apic2d/Shaders/DrawSdf.geom";
+    std::string ballFragShaderPath = "../../apic2d/Shaders/DrawSdf.frag";
     mSdfShader = new Glb::Shader();
     mSdfShader->BuildFromFile(ballVertShaderPath, ballFragShaderPath, ballGeomShaderPath);
 
-    std::string milkVertShaderPath = "../code/Fluid2d/Shaders/DrawMilk.vert";
-    std::string milkFragShaderPath = "../code/Fluid2d/Shaders/DrawMilk.frag";
+    std::string milkVertShaderPath = "../../apic2d/Shaders/DrawMilk.vert";
+    std::string milkFragShaderPath = "../../apic2d/Shaders/DrawMilk.frag";
     mMilkShader = new Glb::Shader();
     mMilkShader->BuildFromFile(milkVertShaderPath, milkFragShaderPath);
     glUniform1i(glGetUniformLocation(mMilkShader->GetId(), "textureSdf"), 0);
