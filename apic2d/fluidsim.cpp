@@ -477,6 +477,28 @@ void FluidSim::particle_boundary_collision(scalar dt) {
   particles_.erase(std::remove_if(particles_.begin(), particles_.end(), remover), particles_.end());
 }
 
+scalar FluidSim::get_temperature_quadratic(const Vector2s& position, const Array2s& grid_temp) {
+  Vector2s p = (position - origin_) / dx_;
+  //Vector2s p0 = p - Vector2s(0.5, 0.5);
+  Vector2s p0 = p;
+
+  scalar ret = 0.0f;
+  Vector2i ip = Vector2i(static_cast<int>(p0(0)), static_cast<int>(p0(1)));
+  for (int i = ip(0) - 1; i <= ip(0) + 1; ++i) {
+    for (int j = ip(1) - 1; j <= ip(1) + 1; ++j) {
+      if (i < 0 || i > ni_ || j < 0 || j >= nj_) {
+        continue;
+      }
+      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;
+      scalar w = kernel::quadratic_kernel(position - pos, dx_);
+      // scalar w = (velocity_order == IO_LINEAR) ? kernel::linear_kernel(position - pos, dx_) : kernel::quadratic_kernel(position - pos, dx_);
+      ret += grid_temp(i, j) * w;
+    }
+  }
+
+  return ret;
+}
+
 Vector2s FluidSim::get_velocity_quadratic_impl(const Vector2s& position, const Array2s& uu, const Array2s& vv) {
   Vector2s p = (position - origin_) / dx_;
   Vector2s p0 = p - Vector2s(0, 0.5);
@@ -886,7 +908,8 @@ void FluidSim::init_random_particles() {
 
         scalar phi = solid_distance(pt);
         // 用emplace_back调用了Particle的构造函数
-        if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_, T_); 
+        if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_); 
+        //if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_, T_); 
       }
     }
   }
@@ -939,9 +962,9 @@ void FluidSim::map_p2g_linear() {
       Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;
       scalar grid_mass = 0.0;
       scalar sum_T_x_mass = 0.0;
-      m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) {
+      m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
         for (const Particle* p : neighbors) {
-          scalar w = kernel::linear_kernel(p->x_ - pos, dx_);
+          scalar w = kernel::quadratic_kernel(p->x_ - pos, dx_);  // TODO:温度的p2g和g2p目前全部使用的是quadratic_kernel
           grid_mass += w * p->mass_;
           sum_T_x_mass += p->temp_ * p->mass_ * w;
         }
@@ -989,7 +1012,22 @@ void FluidSim::map_p2g_quadratic() {
 
       v_(i, j) = sumw > 0.0 ? sumu / sumw : 0.0;
     }
-  });
+    // 温度传递
+    for (int i = 0; i < ni_; ++i) {
+      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;
+      scalar grid_mass = 0.0;
+      scalar sum_T_x_mass = 0.0;
+      // m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) { // 原来查找的是2x3邻域网格中的粒子，不知为何要这样写
+      m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
+      for (const Particle* p : neighbors) {
+          scalar w = kernel::quadratic_kernel(p->x_ - pos, dx_);
+          grid_mass += w * p->mass_;
+          sum_T_x_mass += p->temp_ * p->mass_ * w;
+        }
+      });
+      grid_temp_(i, j) = grid_mass ? sum_T_x_mass / grid_mass : grid_temp_(i, j);
+    }
+ });
 }
 
 void FluidSim::map_p2g_compressible() {
@@ -1000,7 +1038,7 @@ void FluidSim::map_p2g_compressible() {
                 Vector2s pos = Vector2s(i * dx_, (j + 0.5) * dx_) + origin_;
                 scalar sumw = 0.0;
                 scalar sumu = 0.0;
-                m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) {
+                m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) { //TODO:修改查找邻域范围
                     for (const Particle* p : neighbors) {
                         scalar w = p->mass_ * kernel::linear_kernel(p->x_ - pos, dx_);
                         sumu += w * (p->v_(0) + p->c_.col(0).dot(pos - p->x_));
@@ -1070,7 +1108,7 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
         }
         // 温度传递回粒子
         scalar lagrangian_temp = p.temp_;
-        scalar next_grid_temp = get_temperature(p.x_);
+        scalar next_grid_temp = get_temperature_quadratic(p.x_, grid_temp_);
         if (lagrangian_ratio > 0.0) {
           scalar original_grid_temp = next_grid_temp;  // TODO:实现flip需要的saved_temp存储，目前暂时用next_grid_temp代替
           p.temp_ = next_grid_temp + (lagrangian_temp - original_grid_temp) * lagrangian_ratio;

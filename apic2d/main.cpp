@@ -24,7 +24,7 @@
 #include "array2_utils.h"
 #include "fluidsim.h"
 
-#define RENDER
+//#define RENDER
 
 #ifdef RENDER
 #include "RenderWidget.h"

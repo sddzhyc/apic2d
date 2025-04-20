@@ -254,6 +254,8 @@ class FluidSim {
 
   void particle_boundary_collision(scalar dt);
 
+  scalar get_temperature_quadratic(const Vector2s& position, const Array2s& grid_temp);
+
   // fluid velocity operations
   void add_force(scalar dt);
 
