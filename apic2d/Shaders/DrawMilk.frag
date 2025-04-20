@@ -7,8 +7,11 @@ in vec2 texCoord;
 
 uniform sampler2D textureSdf;
 
-vec4 gMilkColor = vec4(1.0, 1.0, 0.9, 1.0);
-vec4 gBakGroundColor = vec4(0.5, 0.8, 1.0, 1.0);
+//vec4 gMilkColor = vec4(1.0, 1.0, 0.9, 1.0);
+//vec4 gBakGroundColor = vec4(0.5, 0.8, 1.0, 1.0);
+vec4 gMilkColor = vec4(0.5, 0.8, 1.0, 1.0);
+vec4 gBakGroundColor = vec4(1.0, 1.0, 0.9, 1.0);
+
 ivec2 gKernelSize = ivec2(11, 11);
 
 float gScreenWidth = 1000.0;
