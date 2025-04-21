@@ -236,6 +236,7 @@ void FluidSim::advance(scalar dt) {
 #else
   solve_pressure(dt);
 #endif
+  solve_temperature(dt);  // 计算温度场
   tock("solve pressure");
 
   // Pressure projection only produces valid velocities in faces with non-zero
@@ -316,7 +317,7 @@ void FluidSim::add_force(scalar dt) {
   // gravity
   for (int j = 0; j < nj_ + 1; ++j) {
     for (int i = 0; i < ni_; ++i) {
-      v_(i, j) += -9.810 * dt; //减少重力加速度？
+      v_(i, j) += -98.10 * dt; //减少重力加速度？
     }
   }
 
@@ -2106,6 +2107,50 @@ void FluidSim::solve_compressible_density_new2(scalar dt) {
       }
     }
   });
+}
+
+
+void FluidSim::solve_temperature(scalar dt) {
+  parallel_for(1, nj_ - 1, [&](int j) {
+    for (int i = 1; i < ni_ - 1; ++i) {
+      scalar laplancianT = 0.0f;
+      int index = i + ni_ * j;
+      float centre_phi = liquid_phi_(i, j);
+
+      scalar T0 = 373.0f;  // 底部边界加热温度
+      if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
+
+        /*laplancianT = (u_weights_(i + 1, j) * grid_temp_(i + 1, j) + u_weights_(i, j) * grid_temp_(i - 1, j) + v_weights_(i, j + 1) * grid_temp_(i, j + 1) +
+                        v_weights_(i, j) * grid_temp_(i, j - 1) - 4 * grid_temp_(i, j)) /
+                       (dx_ * dx_);*/
+        //定义一个匿名函数，若单元格为固体，则设置对应温度为T0
+        auto set_temp = [&](scalar grid_temp, scalar border_weights) { 
+            return border_weights * grid_temp + (1 - border_weights) * T0;
+        };
+        laplancianT = (set_temp(grid_temp_(i + 1, j), u_weights_(i + 1, j)) + set_temp(grid_temp_(i - 1, j), u_weights_(i, j)) +
+                       set_temp(grid_temp_(i, j + 1), v_weights_(i, j + 1)) + set_temp(grid_temp_(i, j - 1), v_weights_(i, j)) - 4 * grid_temp_(i, j)) /
+                      (dx_ * dx_);
+
+        scalar D = 0.5;  // 热扩散率
+        //scalar D = 0.000000145; //热扩散率
+        /*if (laplancianT < 0) { //TODO: 发现相邻空气的流体并非完全绝热，laplancianT略为负数
+          std::cout << "laplancianT: " << laplancianT << std::endl;
+        }*/
+        scalar rho_new = grid_temp_(i, j) + dt * laplancianT * D;
+        grid_temp_(i, j) = rho_new;
+      }
+    }
+  });
+
+
+  for (int j = 1; j < nj_ - 1; ++j) {
+    for (int i = 1; i < ni_ - 1; ++i) {
+      float centre_phi = liquid_phi_(i, j);
+      if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
+        int index = i + j * ni_;
+      }
+    }
+  }
 }
 
 void FluidSim::output_matrix_and_rhs_to_csv(const std::string& matrix_file, const std::string& rhs_file) {

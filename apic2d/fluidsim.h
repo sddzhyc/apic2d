@@ -277,6 +277,7 @@ class FluidSim {
 
   void solve_compressible_density_new2(scalar dt);
 
+  void solve_temperature(scalar dt);
 
  private:
   /*! Boundaries */
@@ -299,8 +300,8 @@ class FluidSim {
 
   /*! Static geometry representation */
   Array2s nodal_solid_phi_;
-  Array2s liquid_phi_; // 衡量网格中液体、气体所占比例, liquid_phi_小于0时，是液体单元格
-  Array2s u_weights_, v_weights_;  // 0表示全部为固体，1表示流体可流动区域
+  Array2s liquid_phi_; // 空气与液体标识, 小于0大于-1时，是液体单元格，=1是空气单元格
+  Array2s u_weights_, v_weights_;  // 0表示为固体边界，1表示流体可流动区域
 
   /*! Data arrays for extrapolation */
   Array2c valid_, old_valid_;
