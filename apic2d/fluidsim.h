@@ -1,22 +1,8 @@
-// Copyright 2016 Raymond Yun Fei, Christopher Batty, Robert Bridson
-//
-// Licensed under the Apache License,
-// Version 2.0(the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 
 #ifndef APIC2D_FLUIDSIM_H_
 #define APIC2D_FLUIDSIM_H_
 
-//#define COMPRESSIBLE_FLUID
+// #define COMPRESSIBLE_FLUID
 
 #define OUT_PUT
 
@@ -131,11 +117,13 @@ class FluidSim {
   void advance(scalar dt);
   void update_boundary();
   void init_random_particles();
+  void init_random_particles_2();
   void render();
   void render_boundaries(const Boundary& b);
   void render2();
   scalar compute_cfl() const;
   scalar solid_distance(const Vector2s& pos) const;
+  void solve_pressure_with_rho(scalar dt);
   scalar solid_distance(const Vector2s& pos, const Boundary& b) const;
 
   Vector2s get_velocity_and_affine_matrix_with_order(const Vector2s& position, scalar dt, FluidSim::VELOCITY_ORDER v_order,
@@ -313,7 +301,9 @@ class FluidSim {
   Array2s saved_comp_rho_;
   Array2s comp_pressure_;
   scalar a, b, R;
+
   Array2s grid_temp_;
+  Array2s grid_rho_;
 
   /*! debug arrays*/
   Array2s laplacianP_;

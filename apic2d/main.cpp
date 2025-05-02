@@ -9,7 +9,7 @@
 #include "array2_utils.h"
 #include "fluidsim.h"
 
-// #define RENDER
+//#define RENDER
 
 #ifdef RENDER
 #include "RenderWidget.h"
@@ -136,7 +136,8 @@ int main(int argc, char **argv) {
   sim.initialize(o0, grid_width, grid_resolution, grid_resolution, 1.0);
   sim.set_root_boundary(std::move(FluidSim::Boundary(c0, Vector2s(rad0, 0.0), FluidSim::BT_CIRCLE, true)));
   sim.update_boundary();
-  sim.init_random_particles();
+  //sim.init_random_particles();
+  sim.init_random_particles_2();  // 采用气液混合的初始粒子分布
 
   Gluvi::userMouseFunc = MouseFunc;
   Gluvi::userDragFunc = DragFunc;
