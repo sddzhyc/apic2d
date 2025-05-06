@@ -19,7 +19,13 @@
 class sorter;
 
 struct Particle {
-  Particle(const Vector2s& x, const Vector2s& v, const scalar& radii, const scalar& density, const scalar& tempreture);
+
+  enum PARTICLE_TYPE {
+    PT_LIQUID,
+    PT_AIR,
+  };
+
+  Particle(const Vector2s& x, const Vector2s& v, const scalar& radii, const scalar& density, const scalar& tempreture, const PARTICLE_TYPE type);
   Particle();
   Particle(const Particle&);
 
@@ -34,6 +40,7 @@ struct Particle {
   scalar mass_;
   scalar logJ_;
   scalar temp_;
+  PARTICLE_TYPE type_;  // 粒子类型，PT_LIQUID表示流体粒子，PT_AIR表示空气粒子
 };
 
 class FluidSim {
@@ -45,6 +52,7 @@ class FluidSim {
   virtual ~FluidSim();
 
   scalar rho_;
+  scalar rho_air_; // 气体初始密度
   scalar T_;
   int outframe_;
 
@@ -128,7 +136,11 @@ class FluidSim {
 
   Vector2s get_velocity_and_affine_matrix_with_order(const Vector2s& position, scalar dt, FluidSim::VELOCITY_ORDER v_order,
                                                      FluidSim::INTERPOLATION_ORDER i_order, Matrix2s* affine_matrix);
+  Vector2s get_air_velocity_and_affine_matrix_with_order(const Vector2s& position, scalar dt, FluidSim::VELOCITY_ORDER v_order,
+                                                         FluidSim::INTERPOLATION_ORDER i_order, Matrix2s* affine_matrix);
   Vector2s get_saved_velocity_with_order(const Vector2s& position, FluidSim::INTERPOLATION_ORDER i_order);
+
+  Vector2s get_saved_air_velocity_with_order(const Vector2s& position, FluidSim::INTERPOLATION_ORDER i_order);
 
   /*! Quadratic interpolation kernels */
   Vector2s get_velocity_quadratic_impl(const Vector2s& position, const Array2s& uu, const Array2s& vv);
@@ -140,8 +152,11 @@ class FluidSim {
 
   /*! Linear interpolation kernels */
   Vector2s get_velocity(const Vector2s& position);
+  Vector2s get_air_velocity(const Vector2s& position);
   Matrix2s get_affine_matrix(const Vector2s& position);
+  Matrix2s get_air_affine_matrix(const Vector2s& position);
   Vector2s get_saved_velocity(const Vector2s& position);
+  Vector2s get_saved_air_velocity(const Vector2s& position);
   Matrix2s get_saved_affine_matrix(const Vector2s& position);
 
   /*! Add particle to the system */
@@ -249,6 +264,7 @@ class FluidSim {
 
   void compute_weights();
   void solve_pressure(scalar dt);
+  void solve_pressure_with_air(scalar dt);
   void compute_liquid_distance();
 
   void constrain_velocity();
@@ -283,6 +299,10 @@ class FluidSim {
   Array2s temp_u_, temp_v_;
   Array2s saved_u_, saved_v_;
 
+  /*! Air velocity */
+  Array2s u_a_, v_a_;
+  Array2s temp_u_a_, temp_v_a_;
+  Array2s saved_u_a_, saved_v_a_;
   /*! Tracer particles */
   std::vector<Particle> particles_;
 

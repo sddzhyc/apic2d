@@ -131,9 +131,10 @@ int main(int argc, char **argv) {
   Gluvi::camera = &cam;
   Gluvi::userDisplayFunc = display;
   glClearColor(1, 1, 1, 1);
-
+  scalar rho_liquid = 1.0f;
+  //scalar rho_air = 0.001f;
   // Set up the simulation
-  sim.initialize(o0, grid_width, grid_resolution, grid_resolution, 1.0);
+  sim.initialize(o0, grid_width, grid_resolution, grid_resolution, rho_liquid);
   sim.set_root_boundary(std::move(FluidSim::Boundary(c0, Vector2s(rad0, 0.0), FluidSim::BT_CIRCLE, true)));
   sim.update_boundary();
   //sim.init_random_particles();
