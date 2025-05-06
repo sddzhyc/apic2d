@@ -28,7 +28,7 @@
 // IT_APIC: affine particle-in-cell (APIC)
 // IT_AFLIP: affine fluid-implicit-particle (AFLIP)
 // IT_ASFLIP: affine separable fluid-implicit-particle (ASFLIP)
-const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_APIC;
+const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_FLIP;
 
 // Change here to try different order for velocity evaluation from grid,
 // options:
@@ -246,8 +246,8 @@ void FluidSim::advance(scalar dt) {
   extrapolate(u_, temp_u_, u_weights_, liquid_phi_, valid_, old_valid_, Vector2i(-1, 0), 2);
   extrapolate(v_, temp_v_, v_weights_, liquid_phi_, valid_, old_valid_, Vector2i(0, -1), 2);
 
-  extrapolate(u_a_, saved_u_a_, u_weights_, liquid_phi_, valid_, old_valid_, Vector2i(-1, 0), 2);
-  extrapolate(v_a_, saved_v_a_, v_weights_, liquid_phi_, valid_, old_valid_, Vector2i(0, -1), 2);
+  extrapolate(u_a_, temp_u_a_, u_weights_, liquid_phi_, valid_, old_valid_, Vector2i(-1, 0), 2);
+  extrapolate(v_a_, temp_v_a_, v_weights_, liquid_phi_, valid_, old_valid_, Vector2i(0, -1), 2);
   tock("extrapolate");
 
   // For extrapolated velocities, replace the normal component with
@@ -426,6 +426,53 @@ void FluidSim::constrain_velocity() {
           v_(i, j) = temp_v_(i, j);
         }
       }    
+    }
+  });
+  // constrain u_a_
+  parallel_for(0, std::max(u_a_.nj, v_a_.nj), [this](int j) {
+    if (j < u_a_.nj) {
+      for (int i = 0; i < u_a_.ni; ++i) {
+        if (u_weights_(i, j) == 0) {
+          // apply constraint
+          Vector2s pos = Vector2s(i * dx_, (j + 0.5) * dx_) + origin_;
+          Vector2s vel = get_air_velocity(pos);
+          Vector2s normal(0, 0);
+          interpolate_gradient(normal, Vector2s(i, j + 0.5), nodal_solid_phi_);
+          normal.normalize();
+          scalar perp_component = vel.dot(normal);
+          temp_u_a_(i, j) = vel[0] - perp_component * normal[0];
+        }
+      }
+    }
+    if (j < v_a_.nj) {
+      for (int i = 0; i < v_a_.ni; ++i) {
+        if (v_weights_(i, j) == 0) {
+          // apply constraint
+          Vector2s pos = Vector2s((i + 0.5) * dx_, j * dx_) + origin_;
+          Vector2s vel = get_air_velocity(pos);
+          Vector2s normal(0, 0);
+          interpolate_gradient(normal, Vector2s(i + 0.5, j), nodal_solid_phi_);
+          normal.normalize();
+          scalar perp_component = vel.dot(normal);
+          temp_v_a_(i, j) = vel[1] - perp_component * normal[1];
+        }
+      }
+    }
+  });
+  parallel_for(0, std::max(u_a_.nj, v_a_.nj), [this](int j) {
+    if (j < u_a_.nj) {
+      for (int i = 0; i < u_a_.ni; ++i) {
+        if (u_weights_(i, j) == 0) {
+          u_a_(i, j) = temp_u_a_(i, j);
+        }
+      }
+    }
+    if (j < v_a_.nj) {
+      for (int i = 0; i < v_a_.ni; ++i) {
+        if (v_weights_(i, j) == 0) {
+          v_a_(i, j) = temp_v_a_(i, j);
+        }
+      }
     }
   });
 }
@@ -814,6 +861,8 @@ scalar FluidSim::get_saved_density(const Vector2s& position) {
           segment is "inside"
           插值计算两个异号距离场函数采样点间，流体边界处距离场函数=0的位置
           返回一个theta值，等于液体一侧（phi < 0）到0值间的距离与采样距离的比值
+          两点均小于0时，即两点间在液体内部，返回1；
+          两点均大于0时，即两点均在气体中，返回0；
           返回值在[0, 1]之间
 */
 scalar fraction_inside(scalar phi_left, scalar phi_right) {
@@ -1000,7 +1049,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       rhs_[index] = 0;
       pressure_[index] = 0;
       float centre_phi = liquid_phi_(i, j);
-      //if (true) {
       if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
         // right neighbour
         float rho_inter = rho_;
@@ -1011,13 +1059,14 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           float theta = fraction_inside(centre_phi, right_phi);
           if (theta < 0.01) theta = 0.01;
           rho_inter = rho_ * theta + (1 - theta) * rho_air_;
-          //matrix_.add_to_element(index, index, term / theta);  // TODO:theta是什么？
-                                                               // theta 无穷大时，系数变化量为0，对应邻居单元格为固体边界
+          //matrix_.add_to_element(index, index, term / theta);
         }  // theta = 1时，系数变化量为原值，对应邻居单元格为空气
         float term = u_weights_(i + 1, j) * dt / sqr(dx_) / rho_inter;
         matrix_.add_to_element(index, index, term);
         matrix_.add_to_element(index, index + 1, -term);
-        rhs_[index] -= (u_weights_(i + 1, j) * u_(i + 1, j) + (1.0f - u_weights_(i + 1, j)) * u_a_(i + 1, j)) / dx_;  // 交错网格，(i, j)就是 (i - 1/2, j)
+
+        float face_frac = fraction_inside(centre_phi, right_phi);
+        rhs_[index] -= u_weights_(i + 1, j) * (face_frac * u_(i + 1, j) + (1.0f - face_frac) * u_a_(i + 1, j)) / dx_;  // 交错网格，(i, j)就是 (i - 1/2, j)
         // left neighbour
         float left_phi = liquid_phi_(i - 1, j);
         if (left_phi < 0) {
@@ -1032,7 +1081,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         matrix_.add_to_element(index, index, term);
         matrix_.add_to_element(index, index - 1, -term);
 
-        rhs_[index] += u_weights_(i, j) * u_(i, j) / dx_ + (1.0f - u_weights_(i, j)) * u_a_(i, j) / dx_;
+        face_frac = fraction_inside(centre_phi, left_phi);
+        rhs_[index] += u_weights_(i, j) * (face_frac * u_(i, j) / dx_ + (1.0f - face_frac) * u_a_(i, j) / dx_);
 
         // top neighbour
         float top_phi = liquid_phi_(i, j + 1);
@@ -1047,7 +1097,9 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
 
         matrix_.add_to_element(index, index, term);
         matrix_.add_to_element(index, index + ni_, -term);
-        rhs_[index] -= v_weights_(i, j + 1) * v_(i, j + 1) / dx_ + (1.0f - v_weights_(i, j + 1)) * v_a_(i, j + 1) / dx_;
+
+        face_frac = fraction_inside(centre_phi, top_phi);
+        rhs_[index] -= v_weights_(i, j + 1) * (face_frac * v_(i, j + 1) / dx_ + (1.0f - face_frac) * v_a_(i, j + 1) / dx_);
         // bottom neighbour
         float bot_phi = liquid_phi_(i, j - 1);
         if (bot_phi < 0) {
@@ -1061,10 +1113,19 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
 
         matrix_.add_to_element(index, index, term);
         matrix_.add_to_element(index, index - ni_, -term);
-        rhs_[index] += v_weights_(i, j) * v_(i, j) / dx_ + (1.0f - v_weights_(i, j)) * v_a_(i, j) / dx_;
+
+        face_frac = fraction_inside(centre_phi, bot_phi);
+        rhs_[index] += v_weights_(i, j) * (face_frac * v_(i, j) / dx_ + (1.0f - face_frac) * v_a_(i, j) / dx_);
       }
     }
   });
+
+  // 检查矩阵是否正定
+  /*if (!is_symmetric(matrix_)) {
+    std::cout << "Matrix is not symmetric." << std::endl;
+  } else {
+    std::cout << "Matrix is symmetric." << std::endl;
+  }*/
 
   // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
   scalar residual;
@@ -1080,11 +1141,13 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       for (int i = 1; i < u_.ni - 1; ++i) {
         int index = i + j * ni_;
         if (u_weights_(i, j) > 0) {
-          if (liquid_phi_(i, j) < 0 || liquid_phi_(i - 1, j) < 0) {
+          if (liquid_phi_(i, j) < 0 || liquid_phi_(i - 1, j) < 0) {  // TODO: 这里的条件判断是否还有必要？
             float theta = 1;
             if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
             if (theta < 0.01) theta = 0.01;
-            u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta;
+
+            float rho_inter = rho_ * theta + (1.0f - theta) * rho_air_;
+            u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / rho_inter;
             u_valid_(i, j) = 1;
           } else {
             u_valid_(i, j) = 0;
@@ -1103,7 +1166,10 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
             float theta = 1;
             if (liquid_phi_(i, j) >= 0 || liquid_phi_(i, j - 1) >= 0) theta = fraction_inside(liquid_phi_(i, j - 1), liquid_phi_(i, j));
             if (theta < 0.01) theta = 0.01;
-            v_(i, j) -= dt * (pressure_[index] - pressure_[index - ni_]) / dx_ / theta;
+
+            float rho_inter = rho_ * theta + (1.0f - theta) * rho_air_;
+            v_(i, j) -= dt * (pressure_[index] - pressure_[index - ni_]) / dx_ / rho_inter;
+            // v_(i, j) -= dt * (pressure_[index] - pressure_[index - ni_]) / dx_ / theta;
             v_valid_(i, j) = 1;
           } else {
             v_valid_(i, j) = 0;
