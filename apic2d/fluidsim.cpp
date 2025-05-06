@@ -44,6 +44,7 @@ const FluidSim::VELOCITY_ORDER velocity_order = FluidSim::VO_EULER;
 // options:
 // IO_LINEAR: linear interpolation
 // IO_QUADRATIC: quadratic interpolation
+//TODO: IO_QUADRATIC的气体粒子g2p插值功能尚未实现，因为get_air_velocity_quadratic待实现
 const FluidSim::INTERPOLATION_ORDER interpolation_order = FluidSim::IO_LINEAR;
 
 //const scalar lagrangian_ratio = 0.97f;
@@ -640,8 +641,10 @@ Vector2s FluidSim::get_velocity_and_affine_matrix_with_order(const Vector2s& pos
 
 Vector2s FluidSim::get_air_velocity_and_affine_matrix_with_order(const Vector2s& position, scalar dt, FluidSim::VELOCITY_ORDER v_order,
                                                              FluidSim::INTERPOLATION_ORDER i_order, Matrix2s* affine_matrix) {
-  auto get_velocity_func = (i_order == IO_LINEAR) ? &FluidSim::get_air_velocity : &FluidSim::get_velocity_quadratic; //TODO:添加get_velocity_quadratic的气体实现
-  auto get_affine_matrix_func = (i_order == IO_LINEAR) ? &FluidSim::get_air_affine_matrix : &FluidSim::get_affine_matrix_quadratic;
+  // auto get_velocity_func = (i_order == IO_LINEAR) ? &FluidSim::get_air_velocity : &FluidSim::get_velocity_quadratic; //TODO:添加get_velocity_quadratic的气体实现
+  // auto get_affine_matrix_func = (i_order == IO_LINEAR) ? &FluidSim::get_air_affine_matrix : &FluidSim::get_affine_matrix_quadratic;
+  auto get_velocity_func = &FluidSim::get_air_velocity;  // TODO: 添加get_velocity_quadratic的气体实现
+  auto get_affine_matrix_func = &FluidSim::get_air_affine_matrix;
 
   switch (v_order) {
     case FluidSim::VO_EULER:
@@ -777,7 +780,8 @@ Vector2s FluidSim::get_saved_velocity_with_order(const Vector2s& position, Fluid
 }
 
 Vector2s FluidSim::get_saved_air_velocity_with_order(const Vector2s& position, FluidSim::INTERPOLATION_ORDER i_order) {
-  return (i_order == IO_LINEAR) ? get_saved_air_velocity(position) : get_saved_velocity_quadratic(position);
+  // return (i_order == IO_LINEAR) ? get_saved_air_velocity(position) : get_saved_velocity_quadratic(position);
+  return get_saved_air_velocity(position); //TODO:待实现二次插值的情况
 }
 
 
