@@ -311,6 +311,9 @@ class FluidSim {
   Array2s liquid_phi_; // 空气与液体标识, 小于0大于-1时，是液体单元格，=1是空气单元格
   Array2s u_weights_, v_weights_;  // 0表示为固体边界，1表示流体可流动区域
 
+  Array2s air_phi_; 
+  Array2s merged_phi_;
+
   /*! Data arrays for extrapolation */
   Array2c valid_, old_valid_;
   Array2c u_valid_, v_valid_;

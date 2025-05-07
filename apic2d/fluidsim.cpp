@@ -102,6 +102,8 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   valid_.resize(ni_ + 1, nj_ + 1);
   old_valid_.resize(ni_ + 1, nj_ + 1);
   liquid_phi_.resize(ni_, nj_);
+  air_phi_.resize(ni_, nj_);
+  merged_phi_.resize(ni_, nj_);
   m_sorter_ = new sorter(ni_, nj_);
 
   // compressible fluid
@@ -484,7 +486,7 @@ void FluidSim::compute_liquid_distance() {
     for (int i = 0; i < ni_; ++i) {
       Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_; //网格中心位置
       // Estimate from particles
-      scalar min_liquid_phi = dx_;
+      scalar min_liquid_phi = dx_; //liquid_phi最大值？
       m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
         for (const Particle* p : neighbors) {
           if (p->type_ == Particle::PT_AIR) continue;  // 只考虑液体粒子
@@ -1146,16 +1148,16 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       for (int i = 1; i < u_.ni - 1; ++i) {
         int index = i + j * ni_;
         if (u_weights_(i, j) > 0) {
-          if (liquid_phi_(i, j) < 0 || liquid_phi_(i - 1, j) < 0) {  // TODO: 这里的条件判断是否还有必要？
-            float theta = 1;
-            if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
-            if (theta < 0.01) theta = 0.01;
-
-            float rho_inter = rho_ * theta + (1.0f - theta) * rho_air_;
+          float theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
+          float face_frac = theta;
+          float rho_inter = rho_ * theta + (1.0f - theta) * rho_air_;
+          if (face_frac > 0) {
             u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / rho_inter;
             u_valid_(i, j) = 1;
-          } else {
-            u_valid_(i, j) = 0;
+          }
+          if (face_frac < 1) {
+            u_a_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / rho_inter;
+            // 需要增加u_a_valid_吗？
           }
         } else {
           u_(i, j) = 0;
@@ -1167,7 +1169,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       for (int i = 0; i < v_.ni; ++i) {
         int index = i + j * ni_;
         if (v_weights_(i, j) > 0) {
-          if (liquid_phi_(i, j) < 0 || liquid_phi_(i, j - 1) < 0) {
+          /*if (liquid_phi_(i, j) < 0 || liquid_phi_(i, j - 1) < 0) {
             float theta = 1;
             if (liquid_phi_(i, j) >= 0 || liquid_phi_(i, j - 1) >= 0) theta = fraction_inside(liquid_phi_(i, j - 1), liquid_phi_(i, j));
             if (theta < 0.01) theta = 0.01;
@@ -1178,6 +1180,16 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
             v_valid_(i, j) = 1;
           } else {
             v_valid_(i, j) = 0;
+          }*/ 
+          float theta = fraction_inside(liquid_phi_(i, j - 1), liquid_phi_(i, j));
+          float face_frac = theta;
+          float rho_inter = rho_ * theta + (1.0f - theta) * rho_air_;
+          if (face_frac > 0) {
+            v_(i, j) -= dt * (pressure_[index] - pressure_[index - ni_]) / dx_ / rho_inter;
+            v_valid_(i, j) = 1;
+          }
+          if (face_frac < 1) {
+            v_a_(i, j) -= dt * (pressure_[index] - pressure_[index - ni_]) / dx_ / rho_inter;
           }
         } else {
           v_(i, j) = 0;
