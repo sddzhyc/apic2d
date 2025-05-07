@@ -1049,10 +1049,12 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       rhs_[index] = 0;
       pressure_[index] = 0;
       float centre_phi = liquid_phi_(i, j);
+      // TODO: 这里的条件判断是否有问题？如果是中心是气体单元格，是否也要进行压力求解？
       if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
         // right neighbour
         float rho_inter = rho_;
         float right_phi = liquid_phi_(i + 1, j);
+        /*
         if (right_phi < 0) {
           rho_inter = rho_;
         } else {  // liquid_phi_ >=0 ，即邻居单元格为空气或固体边界时
@@ -1061,6 +1063,9 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           rho_inter = rho_ * theta + (1 - theta) * rho_air_;
           //matrix_.add_to_element(index, index, term / theta);
         }  // theta = 1时，系数变化量为原值，对应邻居单元格为空气
+        */
+        float theta = fraction_inside(centre_phi, right_phi);
+        rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         float term = u_weights_(i + 1, j) * dt / sqr(dx_) / rho_inter;
         matrix_.add_to_element(index, index, term);
         matrix_.add_to_element(index, index + 1, -term);
@@ -1069,13 +1074,14 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         rhs_[index] -= u_weights_(i + 1, j) * (face_frac * u_(i + 1, j) + (1.0f - face_frac) * u_a_(i + 1, j)) / dx_;  // 交错网格，(i, j)就是 (i - 1/2, j)
         // left neighbour
         float left_phi = liquid_phi_(i - 1, j);
+        /*
         if (left_phi < 0) {
           rho_inter = rho_;
         } else {
-          float theta = fraction_inside(centre_phi, left_phi);
           if (theta < 0.01) theta = 0.01;
-          rho_inter = rho_ * theta + (1 - theta) * rho_air_;
-        }
+        }*/
+        theta = fraction_inside(centre_phi, left_phi);
+        rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = u_weights_(i, j) * dt / sqr(dx_) / rho_inter;
 
         matrix_.add_to_element(index, index, term);
@@ -1086,30 +1092,29 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
 
         // top neighbour
         float top_phi = liquid_phi_(i, j + 1);
-        if (top_phi < 0) {
-          rho_inter = rho_;
-        } else {
-          float theta = fraction_inside(centre_phi, top_phi);
-          if (theta < 0.01) theta = 0.01;
-          rho_inter = rho_ * theta + (1 - theta) * rho_air_;
-        }
+
+        theta = fraction_inside(centre_phi, top_phi);
+        rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = v_weights_(i, j + 1) * dt / sqr(dx_) / rho_inter;
 
         matrix_.add_to_element(index, index, term);
         matrix_.add_to_element(index, index + ni_, -term);
+        /*if (i == 41 && j == 10) {
+          std::cout << "i: " << i << ", j: " << j << ", term: " << term << ", rho_inter: " << rho_inter << std::endl;
+        }*/
 
         face_frac = fraction_inside(centre_phi, top_phi);
         rhs_[index] -= v_weights_(i, j + 1) * (face_frac * v_(i, j + 1) / dx_ + (1.0f - face_frac) * v_a_(i, j + 1) / dx_);
         // bottom neighbour
         float bot_phi = liquid_phi_(i, j - 1);
-        if (bot_phi < 0) {
-          rho_inter = rho_;
-        } else {
-          float theta = fraction_inside(centre_phi, bot_phi);
-          if (theta < 0.01) theta = 0.01;
-          rho_inter = rho_ * theta + (1 - theta) * rho_air_;
-        }
+
+        theta = fraction_inside(centre_phi, bot_phi);
+        rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = v_weights_(i, j) * dt / sqr(dx_) / rho_inter;
+
+        /*if (i == 41 && j == 11) {
+          std::cout << "i: " << i << ", j: " << j << ", term: " << term << ", rho_inter: " << rho_inter << std::endl;
+        }*/
 
         matrix_.add_to_element(index, index, term);
         matrix_.add_to_element(index, index - ni_, -term);
@@ -1120,12 +1125,12 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
     }
   });
 
-  // 检查矩阵是否正定
-  /*if (!is_symmetric(matrix_)) {
-    std::cout << "Matrix is not symmetric." << std::endl;
-  } else {
-    std::cout << "Matrix is symmetric." << std::endl;
-  }*/
+  //// 检查矩阵是否正定
+  //if (!is_symmetric(matrix_)) {
+  //  // std::cout << std::endl << "Matrix is not symmetric." << std::endl;
+  //} else {
+  //  std::cout << "Matrix is symmetric." << std::endl;
+  //}
 
   // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
   scalar residual;
@@ -2706,6 +2711,18 @@ bool FluidSim::is_symmetric(const robertbridson::SparseMatrix<scalar>& matrix) {
   for (int i = 0; i < n; ++i) {
     for (int j = 0; j < n; ++j) {
       if (matrix(i, j) != matrix(j, i)) {
+        // 计算其对应压强位置的坐标
+        int x1 = i % ni_;
+        int y1 = i / ni_;
+        // 打印该位置的几何信息，如u_weights_和v_weights_, liquid_phi_
+        std::cout << "Matrix is not symmetric with values: " << matrix(i, j) << " and " << matrix(j, i) << std::endl;
+        std::cout << "(" << x1 << ", " << y1 << "): " << " ---u_weights_ : " << u_weights_(x1, y1) << ", v_weights_: " << v_weights_(x1, y1)
+                  << ", liquid_phi_: " << liquid_phi_(x1, y1) << std::endl;
+        int x2 = j % ni_;
+        int y2 = j / ni_;
+        std::cout << "(" << x2 << ", " << y2 << "): " << "--- u_weights_: " << u_weights_(x2, y2) << ", v_weights_: " << v_weights_(x2, y2)
+                  << ", liquid_phi_: " << liquid_phi_(x2, y2)
+                  << std::endl << std::endl;
         return false;
       }
     }
