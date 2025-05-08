@@ -223,6 +223,7 @@ void FluidSim::advance(scalar dt) {
 
   tick();
   compute_liquid_distance();
+  compute_air_distance();
   tock("compute phi");  // ??
 
   // Compute finite-volume type_ face area weight for each velocity sample.
@@ -234,7 +235,7 @@ void FluidSim::advance(scalar dt) {
   tick();
 #ifdef COMPRESSIBLE_FLUID
   solve_compressible_density_new(dt);  // 启用不可压缩求解，更新comp_rho_
-#else
+#else 
   solve_pressure_with_air(dt);
 #endif
   solve_temperature(dt);  // 计算温度场
@@ -502,7 +503,29 @@ void FluidSim::compute_liquid_distance() {
   });
 }
 
-/*!
+void FluidSim::compute_air_distance() {
+  const scalar min_radius = dx_ / sqrtf(2.0);
+  parallel_for(0, static_cast<int>(nj_), [&](int j) {
+    for (int i = 0; i < ni_; ++i) {
+      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // 网格中心位置
+      // Estimate from particles
+      scalar min_air_phi = dx_;  // phi最大值？
+      m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
+        for (const Particle* p : neighbors) {
+          if (p->type_ == Particle::PT_LIQUID) continue;
+          scalar phi_temp = (pos - p->x_).norm() - std::max(p->radii_, min_radius);
+          min_air_phi = std::min(min_air_phi, phi_temp);  // 网格中心到最近邻粒子边缘的距离
+        }
+      });
+      // "extrapolate" phi into solids if nearby
+      scalar solid_phi_val = solid_distance(pos);
+      air_phi_(i, j) = std::min(min_air_phi, solid_phi_val);
+    }
+  });
+}
+
+scalar FluidSim::get_merged_phi(int i, int j) { return (liquid_phi_(i, j) - air_phi_(i, j)) * 0.5f; }
+    /*!
   \brief  Add a tracer particle for visualization
 */
 void FluidSim::add_particle(const Particle& p) { particles_.push_back(p); }
@@ -1051,43 +1074,45 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       rhs_[index] = 0;
       pressure_[index] = 0;
       float centre_phi = liquid_phi_(i, j);
-      // TODO: 这里的条件判断是否有问题？如果是中心是气体单元格，是否也要进行压力求解？
-      if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
+      // float centre_phi = get_merged_phi(i, j);
+      if ((liquid_phi_(i, j) < 0 || air_phi_(i, j) < 0) &&
+          (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
         // right neighbour
         float rho_inter = rho_;
         float right_phi = liquid_phi_(i + 1, j);
-        /*
-        if (right_phi < 0) {
-          rho_inter = rho_;
-        } else {  // liquid_phi_ >=0 ，即邻居单元格为空气或固体边界时
-          float theta = fraction_inside(centre_phi, right_phi);
-          if (theta < 0.01) theta = 0.01;
-          rho_inter = rho_ * theta + (1 - theta) * rho_air_;
-          //matrix_.add_to_element(index, index, term / theta);
-        }  // theta = 1时，系数变化量为原值，对应邻居单元格为空气
-        */
         float theta = fraction_inside(centre_phi, right_phi);
         rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         float term = u_weights_(i + 1, j) * dt / sqr(dx_) / rho_inter;
-        matrix_.add_to_element(index, index, term);
-        matrix_.add_to_element(index, index + 1, -term);
+
+        if (liquid_phi_(i + 1, j) < 0 || air_phi_(i + 1, j) < 0) {
+          matrix_.add_to_element(index, index, term);
+          matrix_.add_to_element(index, index + 1, -term);
+        } else {  // 既无气体也无液体的真空单元格单独处理
+          matrix_.add_to_element(index, index, term);
+          //float term = u_weights_(i + 1, j) * dt / sqr(dx_);
+          //// float theta = fraction_inside(centre_phi, right_phi);                                                          // theta 是什么？
+          //if (theta < 0.01) theta = 0.01;
+          //matrix_.add_to_element(index, index, term / theta);  
+          // rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_;  
+        }
 
         float face_frac = fraction_inside(centre_phi, right_phi);
         rhs_[index] -= u_weights_(i + 1, j) * (face_frac * u_(i + 1, j) + (1.0f - face_frac) * u_a_(i + 1, j)) / dx_;  // 交错网格，(i, j)就是 (i - 1/2, j)
         // left neighbour
         float left_phi = liquid_phi_(i - 1, j);
-        /*
-        if (left_phi < 0) {
-          rho_inter = rho_;
-        } else {
-          if (theta < 0.01) theta = 0.01;
-        }*/
         theta = fraction_inside(centre_phi, left_phi);
         rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = u_weights_(i, j) * dt / sqr(dx_) / rho_inter;
-
-        matrix_.add_to_element(index, index, term);
-        matrix_.add_to_element(index, index - 1, -term);
+        
+        if (liquid_phi_(i - 1, j) < 0 || air_phi_(i - 1, j) < 0) {
+          matrix_.add_to_element(index, index, term);
+          matrix_.add_to_element(index, index - 1, -term);
+        } else {
+          matrix_.add_to_element(index, index, term);
+          /*float term = u_weights_(i + 1, j) * dt / sqr(dx_);
+          if (theta < 0.01) theta = 0.01;
+          matrix_.add_to_element(index, index, term / theta);*/  
+        }
 
         face_frac = fraction_inside(centre_phi, left_phi);
         rhs_[index] += u_weights_(i, j) * (face_frac * u_(i, j) / dx_ + (1.0f - face_frac) * u_a_(i, j) / dx_);
@@ -1099,27 +1124,40 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = v_weights_(i, j + 1) * dt / sqr(dx_) / rho_inter;
 
-        matrix_.add_to_element(index, index, term);
-        matrix_.add_to_element(index, index + ni_, -term);
+        if (liquid_phi_(i, j + 1) < 0 || air_phi_(i, j + 1) < 0) {
+          matrix_.add_to_element(index, index, term);
+          matrix_.add_to_element(index, index + ni_, -term);
+        } else {
+          matrix_.add_to_element(index, index, term);
+          /*float term = v_weights_(i, j + 1) * dt / sqr(dx_);
+          if (theta < 0.01) theta = 0.01;
+          matrix_.add_to_element(index, index, term / theta);*/
+        }
         /*if (i == 41 && j == 10) {
           std::cout << "i: " << i << ", j: " << j << ", term: " << term << ", rho_inter: " << rho_inter << std::endl;
         }*/
-
         face_frac = fraction_inside(centre_phi, top_phi);
         rhs_[index] -= v_weights_(i, j + 1) * (face_frac * v_(i, j + 1) / dx_ + (1.0f - face_frac) * v_a_(i, j + 1) / dx_);
+        
         // bottom neighbour
         float bot_phi = liquid_phi_(i, j - 1);
 
         theta = fraction_inside(centre_phi, bot_phi);
         rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = v_weights_(i, j) * dt / sqr(dx_) / rho_inter;
-
         /*if (i == 41 && j == 11) {
           std::cout << "i: " << i << ", j: " << j << ", term: " << term << ", rho_inter: " << rho_inter << std::endl;
         }*/
 
-        matrix_.add_to_element(index, index, term);
-        matrix_.add_to_element(index, index - ni_, -term);
+        if (liquid_phi_(i, j - 1) < 0 || air_phi_(i, j - 1) < 0) {
+          matrix_.add_to_element(index, index, term);
+          matrix_.add_to_element(index, index - ni_, -term);
+        } else {
+          matrix_.add_to_element(index, index, term);
+          /*float term = v_weights_(i, j) * dt / sqr(dx_);
+          if (theta < 0.01) theta = 0.01;
+          matrix_.add_to_element(index, index, term / theta);*/
+        }
 
         face_frac = fraction_inside(centre_phi, bot_phi);
         rhs_[index] += v_weights_(i, j) * (face_frac * v_(i, j) / dx_ + (1.0f - face_frac) * v_a_(i, j) / dx_);
@@ -1127,12 +1165,13 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
     }
   });
 
-  //// 检查矩阵是否正定
-  //if (!is_symmetric(matrix_)) {
-  //  // std::cout << std::endl << "Matrix is not symmetric." << std::endl;
-  //} else {
-  //  std::cout << "Matrix is symmetric." << std::endl;
-  //}
+  /* //检查矩阵是否正定
+  if (!is_symmetric(matrix_)) {
+    // std::cout << std::endl << "Matrix is not symmetric." << std::endl;
+  } else {
+    std::cout << "Matrix is symmetric." << std::endl;
+  }
+  */
 
   // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
   scalar residual;
@@ -2005,6 +2044,8 @@ void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
   press = parts->addAttribute("pressure", Partio::FLOAT, 1);
   lapP = parts->addAttribute("laplacianP", Partio::FLOAT, 1);
   liquidPhi = parts->addAttribute("liquid_phi", Partio::FLOAT, 1);
+  Partio::ParticleAttribute airPhi = parts->addAttribute("air_phi", Partio::FLOAT, 1);
+  Partio::ParticleAttribute mergedPhi = parts->addAttribute("merged_phi", Partio::FLOAT, 1);
   
   for (int j = 0; j < nj_; j++)
     for (int i = 0; i < ni_; i++) {
@@ -2013,6 +2054,8 @@ void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
       scalar p_press = pressure_[i + j * ni_];
 	  scalar p_lapP = laplacianP_(i, j);
       scalar p_liquid_phi = liquid_phi_(i, j);
+      scalar p_air_phi = air_phi_(i, j);
+      scalar p_merged_phi = get_merged_phi(i, j);
 
       int idx = parts->addParticle();
       float* x = parts->dataWrite<float>(pos, idx);
@@ -2020,6 +2063,8 @@ void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
       float* pressure = parts->dataWrite<float>(press, idx);
 	  float* laplacianP = parts->dataWrite<float>(lapP, idx);
       float* liquid_phi = parts->dataWrite<float>(liquidPhi, idx);
+      float* air_phi = parts->dataWrite<float>(airPhi, idx);
+      float* merged_phi = parts->dataWrite<float>(mergedPhi, idx);
 
       x[0] = p_x[0];
       x[1] = p_x[1];
@@ -2028,6 +2073,8 @@ void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
       *pressure = p_press;
 	  *laplacianP = p_lapP;
       *liquid_phi = p_liquid_phi;
+      *air_phi = p_air_phi;
+      *merged_phi = p_merged_phi;
     }
 
   Partio::write(file.c_str(), *parts);
@@ -2043,22 +2090,26 @@ void FluidSim::OutputGridXDataBgeo(const std::string& s, const int frame) {
   pos = parts->addAttribute("position", Partio::VECTOR, 3);
   velx = parts->addAttribute("u", Partio::FLOAT, 1);
   u_weight_ = parts->addAttribute("u_weight_", Partio::FLOAT, 1);
+  Partio::ParticleAttribute air_velx = parts->addAttribute("u_a_", Partio::FLOAT, 1);
 
   for (int j = 0; j < nj_; j++)
     for (int i = 0; i < ni_ + 1; i++) {
       Vector2s p_x = Vector2s((i)*dx_, (j + 0.5) * dx_);
       scalar p_u = u_(i, j);
+      scalar p_u_a = u_a_(i, j);
 
       int idx = parts->addParticle();
       float* x = parts->dataWrite<float>(pos, idx);
       float* u = parts->dataWrite<float>(velx, idx);
       float* u_weight = parts->dataWrite<float>(u_weight_, idx);
+      float* u_a = parts->dataWrite<float>(air_velx, idx);
 
       x[0] = p_x[0];
       x[1] = p_x[1];
       x[2] = 0.0f;
       *u = p_u;
       *u_weight = u_weights_(i, j);
+      *u_a = p_u_a;
     }
 
   Partio::write(file.c_str(), *parts);
@@ -2074,21 +2125,25 @@ void FluidSim::OutputGridYDataBgeo(const std::string& s, const int frame)  {
   pos = parts->addAttribute("position", Partio::VECTOR, 3);
   vely = parts->addAttribute("v", Partio::FLOAT, 1);
   v_weight_ = parts->addAttribute("v_weight_", Partio::FLOAT, 1);
+  Partio::ParticleAttribute air_vely = parts->addAttribute("v_a_", Partio::FLOAT, 1);
 
   for (int j = 0; j < nj_ + 1; j++)
     for (int i = 0; i < ni_; i++) {
       Vector2s p_x = Vector2s((i + 0.5) * dx_, (j)*dx_);
       scalar p_v = v_(i, j);
+      scalar p_v_a = v_a_(i, j);
 
       int idx = parts->addParticle();
       float* x = parts->dataWrite<float>(pos, idx);
       float* v = parts->dataWrite<float>(vely, idx);
       float* v_weight = parts->dataWrite<float>(v_weight_, idx);
+      float* v_a = parts->dataWrite<float>(air_vely, idx);
       x[0] = p_x[0];
       x[1] = p_x[1];
       x[2] = 0.0f;
       *v = p_v;
       *v_weight = v_weights_(i, j);
+      *v_a = p_v_a;
     }
 
   Partio::write(file.c_str(), *parts);

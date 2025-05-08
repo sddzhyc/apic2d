@@ -267,6 +267,10 @@ class FluidSim {
   void solve_pressure_with_air(scalar dt);
   void compute_liquid_distance();
 
+  void compute_air_distance();
+
+  scalar get_merged_phi(int i, int j);
+
   void constrain_velocity();
 
   // compressible fluid operations
