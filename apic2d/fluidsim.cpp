@@ -524,6 +524,12 @@ void FluidSim::compute_air_distance() {
   });
 }
 
+// 计算曲率, 使用 standard central difference for the Laplacian
+scalar FluidSim::compute_curvature(int i, int j) { 
+  scalar nabla_phi = liquid_phi_(i + 1, j) + liquid_phi_(i - 1, j) + liquid_phi_(i, j + 1) + liquid_phi_(i, j - 1) - 4 * liquid_phi_(i, j);
+  nabla_phi /= (dx_ * dx_);
+  return nabla_phi;
+}
 scalar FluidSim::get_merged_phi(int i, int j) { return (liquid_phi_(i, j) - air_phi_(i, j)) * 0.5f; }
     /*!
   \brief  Add a tracer particle for visualization
@@ -1073,6 +1079,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       int index = i + ni_ * j;
       rhs_[index] = 0;
       pressure_[index] = 0;
+
+      scalar gema = 0.073f;  // γ for water and air at normal conditions is approximately 0.073J/m^2
       float centre_phi = liquid_phi_(i, j);
       // float centre_phi = get_merged_phi(i, j);
       if ((liquid_phi_(i, j) < 0 || air_phi_(i, j) < 0) &&
@@ -1087,6 +1095,10 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         if (liquid_phi_(i + 1, j) < 0 || air_phi_(i + 1, j) < 0) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index + 1, -term);
+          // 添加表面张力压强
+          if (theta > 0 && theta < 1) {
+            rhs_[index] += gema * compute_curvature(i + 1, j) * dt / sqr(dx_) / rho_inter;
+          }
         } else {  // 既无气体也无液体的真空单元格单独处理
           matrix_.add_to_element(index, index, term);
           //float term = u_weights_(i + 1, j) * dt / sqr(dx_);
@@ -1107,6 +1119,10 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         if (liquid_phi_(i - 1, j) < 0 || air_phi_(i - 1, j) < 0) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index - 1, -term);
+
+        if (theta > 0 && theta < 1) {
+            rhs_[index] += gema * compute_curvature(i + 1, j) * dt / sqr(dx_) / rho_inter;
+          }
         } else {
           matrix_.add_to_element(index, index, term);
           /*float term = u_weights_(i + 1, j) * dt / sqr(dx_);
@@ -1127,11 +1143,12 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         if (liquid_phi_(i, j + 1) < 0 || air_phi_(i, j + 1) < 0) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index + ni_, -term);
+
+          if (theta > 0 && theta < 1) {
+            rhs_[index] += gema * compute_curvature(i + 1, j) * dt / sqr(dx_) / rho_inter;
+          }
         } else {
           matrix_.add_to_element(index, index, term);
-          /*float term = v_weights_(i, j + 1) * dt / sqr(dx_);
-          if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, term / theta);*/
         }
         /*if (i == 41 && j == 10) {
           std::cout << "i: " << i << ", j: " << j << ", term: " << term << ", rho_inter: " << rho_inter << std::endl;
@@ -1148,10 +1165,12 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         /*if (i == 41 && j == 11) {
           std::cout << "i: " << i << ", j: " << j << ", term: " << term << ", rho_inter: " << rho_inter << std::endl;
         }*/
-
         if (liquid_phi_(i, j - 1) < 0 || air_phi_(i, j - 1) < 0) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index - ni_, -term);
+          if (theta > 0 && theta < 1) {
+            rhs_[index] += gema * compute_curvature(i + 1, j) * dt / sqr(dx_) / rho_inter;
+          }
         } else {
           matrix_.add_to_element(index, index, term);
           /*float term = v_weights_(i, j) * dt / sqr(dx_);
@@ -1179,6 +1198,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
   bool success = solver_.solve(matrix_, rhs_, pressure_, residual, iterations);
   if (!success) {
     std::cout << "WARNING: Pressure solve failed! residual = " << residual << ", iters = " << iterations << std::endl;
+  } else {
+    std::cout << "INFO: residual = " << residual << ", iters = " << iterations << std::endl;
   }
 
   // Apply the velocity update

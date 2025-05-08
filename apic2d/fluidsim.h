@@ -269,6 +269,8 @@ class FluidSim {
 
   void compute_air_distance();
 
+  scalar compute_curvature(int i, int j);
+
   scalar get_merged_phi(int i, int j);
 
   void constrain_velocity();
