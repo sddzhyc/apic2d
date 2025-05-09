@@ -271,6 +271,8 @@ class FluidSim {
 
   scalar compute_curvature(int i, int j);
 
+  scalar compute_face_fraction(int phi_0, int phi_1);
+
   scalar get_merged_phi(int i, int j);
 
   void constrain_velocity();

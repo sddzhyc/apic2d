@@ -530,6 +530,13 @@ scalar FluidSim::compute_curvature(int i, int j) {
   nabla_phi /= (dx_ * dx_);
   return nabla_phi;
 }
+scalar FluidSim::compute_face_fraction(int phi_0, int phi_1) {
+  float d = sqrt(dx_ * dx_ - sqr(phi_1 - phi_0));
+  float vfrac = 0.5f - 0.5f * (phi_1 + phi_0) / d;
+  vfrac = std::max(0.0f, std::min(1.0f, vfrac));  // clamp to [0, 1]
+  return vfrac;
+}
+
 scalar FluidSim::get_merged_phi(int i, int j) { return (liquid_phi_(i, j) - air_phi_(i, j)) * 0.5f; }
     /*!
   \brief  Add a tracer particle for visualization
@@ -1080,9 +1087,9 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       rhs_[index] = 0;
       pressure_[index] = 0;
 
-      scalar gema = 0.073f;  // γ for water and air at normal conditions is approximately 0.073J/m^2
+      scalar gema = 0.73f;  // γ for water and air at normal conditions is approximately 0.073J/m^2
       float centre_phi = liquid_phi_(i, j);
-      // float centre_phi = get_merged_phi(i, j);
+      //float centre_phi = get_merged_phi(i, j);
       if ((liquid_phi_(i, j) < 0 || air_phi_(i, j) < 0) &&
           (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
         // right neighbour
@@ -1108,7 +1115,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           // rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_;  
         }
 
-        float face_frac = fraction_inside(centre_phi, right_phi);
+        float face_frac = compute_face_fraction(centre_phi, right_phi);
         rhs_[index] -= u_weights_(i + 1, j) * (face_frac * u_(i + 1, j) + (1.0f - face_frac) * u_a_(i + 1, j)) / dx_;  // 交错网格，(i, j)就是 (i - 1/2, j)
         // left neighbour
         float left_phi = liquid_phi_(i - 1, j);
@@ -1130,7 +1137,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           matrix_.add_to_element(index, index, term / theta);*/  
         }
 
-        face_frac = fraction_inside(centre_phi, left_phi);
+        face_frac = compute_face_fraction(centre_phi, left_phi);
         rhs_[index] += u_weights_(i, j) * (face_frac * u_(i, j) / dx_ + (1.0f - face_frac) * u_a_(i, j) / dx_);
 
         // top neighbour
@@ -1153,7 +1160,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         /*if (i == 41 && j == 10) {
           std::cout << "i: " << i << ", j: " << j << ", term: " << term << ", rho_inter: " << rho_inter << std::endl;
         }*/
-        face_frac = fraction_inside(centre_phi, top_phi);
+        face_frac = compute_face_fraction(centre_phi, top_phi);
         rhs_[index] -= v_weights_(i, j + 1) * (face_frac * v_(i, j + 1) / dx_ + (1.0f - face_frac) * v_a_(i, j + 1) / dx_);
         
         // bottom neighbour
@@ -1178,7 +1185,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           matrix_.add_to_element(index, index, term / theta);*/
         }
 
-        face_frac = fraction_inside(centre_phi, bot_phi);
+        face_frac = compute_face_fraction(centre_phi, bot_phi);
         rhs_[index] += v_weights_(i, j) * (face_frac * v_(i, j) / dx_ + (1.0f - face_frac) * v_a_(i, j) / dx_);
       }
     }
@@ -1444,11 +1451,21 @@ void FluidSim::init_random_particles_2() {
         Vector2s pt = Vector2s(x_, y) + origin_;
 
         scalar phi = solid_distance(pt);
-        // 用emplace_back调用了Particle的构造函数
         //if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_, T_);
-        if (phi > dx_ * ni_ * 0.2 && phi <= dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
-        //初始化气体粒子
-        if (phi > dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
+        // 中心生成气体被液体包裹的情况
+        /*if (phi > dx_ * ni_ * 0.2 && phi <= dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
+        if (phi > dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);*/
+        // 全气体粒子情况
+        // if (phi > dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
+        
+         // 场景：流体静止，上层液体下层气体
+         /*if (phi > 0 && y < nj_/ 2 && y > nj_ / 4) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
+         if (phi > 0 && y <= nj_ / 4) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);*/
+        // 场景：流体静止，上层气体下层液体
+        if (phi > 0 && y < nj_ / 2 && y > nj_ / 3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
+        if (phi > 0 && y <= nj_ / 3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
+
+        // TODO:圆形下1/3为液体，中间生成小气泡
       }
     }
   }
