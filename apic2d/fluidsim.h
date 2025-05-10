@@ -269,6 +269,8 @@ class FluidSim {
 
   void compute_air_distance();
 
+  void compute_merged_distance();
+
   scalar compute_curvature(int i, int j);
 
   scalar compute_face_fraction(int phi_0, int phi_1);

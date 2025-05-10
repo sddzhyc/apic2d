@@ -47,8 +47,8 @@ const FluidSim::VELOCITY_ORDER velocity_order = FluidSim::VO_EULER;
 //TODO: IO_QUADRATIC的气体粒子g2p插值功能尚未实现，因为get_air_velocity_quadratic待实现
 const FluidSim::INTERPOLATION_ORDER interpolation_order = FluidSim::IO_LINEAR;
 
-//const scalar lagrangian_ratio = 0.97f;
-const scalar lagrangian_ratio = 1.0f;
+const scalar lagrangian_ratio = 0.97f;
+// const scalar lagrangian_ratio = 1.0f;
 const int particle_correction_step = 1;
 
 // whether collision is resolved with another pass on each particle (instead of
@@ -224,6 +224,7 @@ void FluidSim::advance(scalar dt) {
   tick();
   compute_liquid_distance();
   compute_air_distance();
+  compute_merged_distance();
   tock("compute phi");  // ??
 
   // Compute finite-volume type_ face area weight for each velocity sample.
@@ -326,7 +327,8 @@ void FluidSim::add_force(scalar dt) {
   for (int j = 0; j < nj_ + 1; ++j) {
     for (int i = 0; i < ni_; ++i) {
       v_(i, j) += -9.810 * dt; //减少重力加速度？
-      v_a_(i, j) += -9.810 * dt;
+      // TODO:是否需要为气体粒子设置不同的重力加速度？
+      v_a_(i, j) += -9.810 * dt;  
     }
   }
 
@@ -487,7 +489,7 @@ void FluidSim::compute_liquid_distance() {
     for (int i = 0; i < ni_; ++i) {
       Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_; //网格中心位置
       // Estimate from particles
-      scalar min_liquid_phi = dx_; //liquid_phi最大值？
+      scalar min_liquid_phi = dx_;
       m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
         for (const Particle* p : neighbors) {
           if (p->type_ == Particle::PT_AIR) continue;  // 只考虑液体粒子
@@ -509,7 +511,7 @@ void FluidSim::compute_air_distance() {
     for (int i = 0; i < ni_; ++i) {
       Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // 网格中心位置
       // Estimate from particles
-      scalar min_air_phi = dx_;  // phi最大值？
+      scalar min_air_phi = dx_;  // 初始化air_phi的初始值，也是没有检索到粒子时的最大值
       m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
         for (const Particle* p : neighbors) {
           if (p->type_ == Particle::PT_LIQUID) continue;
@@ -520,6 +522,34 @@ void FluidSim::compute_air_distance() {
       // "extrapolate" phi into solids if nearby
       scalar solid_phi_val = solid_distance(pos);
       air_phi_(i, j) = std::min(min_air_phi, solid_phi_val);
+    }
+  });
+}
+
+
+void FluidSim::compute_merged_distance() {
+  const scalar min_radius = dx_ / sqrtf(2.0);
+  parallel_for(0, static_cast<int>(nj_), [&](int j) {
+    for (int i = 0; i < ni_; ++i) {
+      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // 网格中心位置
+      // Estimate from particles
+      scalar min_merged_phi = 2 * dx_;  // 初始化phi的初始值，也就是没有检索到粒子时的最大值
+      scalar min_liquid_phi = 2 * dx_;
+      scalar min_air_phi = 2 * dx_;
+      m_sorter_->getNeigboringParticles_cell(i, j, -2, 2, -2, 2, [&](const NeighborParticlesType& neighbors) {
+          for (const Particle* p : neighbors) {
+            scalar phi_temp = (pos - p->x_).norm() - std::max(p->radii_, min_radius);
+            if (p->type_ == Particle::PT_LIQUID) {
+              min_liquid_phi = std::min(min_liquid_phi, phi_temp); 
+            } else {
+            min_air_phi = std::min(min_air_phi, phi_temp);  // 网格中心到最近邻粒子边缘的距离
+            }
+          }
+      });
+      min_merged_phi = std::min(dx_, (min_liquid_phi - min_air_phi) * 0.5f);
+      // "extrapolate" phi into solids if nearby
+      scalar solid_phi_val = solid_distance(pos);
+      merged_phi_(i, j) = std::min(min_merged_phi, solid_phi_val);
     }
   });
 }
@@ -1087,14 +1117,19 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       rhs_[index] = 0;
       pressure_[index] = 0;
 
-      scalar gema = 0.73f;  // γ for water and air at normal conditions is approximately 0.073J/m^2
+      scalar gema = 1.0f;  // γ for water and air at normal conditions is approximately 0.073J/m^2
+      
+      // float centre_phi = liquid_phi_(i, j);
       float centre_phi = liquid_phi_(i, j);
-      //float centre_phi = get_merged_phi(i, j);
+      float right_phi = liquid_phi_(i + 1, j);
+      float left_phi = liquid_phi_(i - 1, j);
+      float top_phi = liquid_phi_(i, j + 1);
+      float bot_phi = liquid_phi_(i, j - 1);
+
       if ((liquid_phi_(i, j) < 0 || air_phi_(i, j) < 0) &&
           (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
         // right neighbour
         float rho_inter = rho_;
-        float right_phi = liquid_phi_(i + 1, j);
         float theta = fraction_inside(centre_phi, right_phi);
         rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         float term = u_weights_(i + 1, j) * dt / sqr(dx_) / rho_inter;
@@ -1117,8 +1152,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
 
         float face_frac = compute_face_fraction(centre_phi, right_phi);
         rhs_[index] -= u_weights_(i + 1, j) * (face_frac * u_(i + 1, j) + (1.0f - face_frac) * u_a_(i + 1, j)) / dx_;  // 交错网格，(i, j)就是 (i - 1/2, j)
+        
         // left neighbour
-        float left_phi = liquid_phi_(i - 1, j);
         theta = fraction_inside(centre_phi, left_phi);
         rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = u_weights_(i, j) * dt / sqr(dx_) / rho_inter;
@@ -1128,7 +1163,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           matrix_.add_to_element(index, index - 1, -term);
 
         if (theta > 0 && theta < 1) {
-            rhs_[index] += gema * compute_curvature(i + 1, j) * dt / sqr(dx_) / rho_inter;
+          rhs_[index] += gema * compute_curvature(i - 1, j) * dt / sqr(dx_) / rho_inter;
           }
         } else {
           matrix_.add_to_element(index, index, term);
@@ -1141,8 +1176,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         rhs_[index] += u_weights_(i, j) * (face_frac * u_(i, j) / dx_ + (1.0f - face_frac) * u_a_(i, j) / dx_);
 
         // top neighbour
-        float top_phi = liquid_phi_(i, j + 1);
-
         theta = fraction_inside(centre_phi, top_phi);
         rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = v_weights_(i, j + 1) * dt / sqr(dx_) / rho_inter;
@@ -1152,7 +1185,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           matrix_.add_to_element(index, index + ni_, -term);
 
           if (theta > 0 && theta < 1) {
-            rhs_[index] += gema * compute_curvature(i + 1, j) * dt / sqr(dx_) / rho_inter;
+            rhs_[index] += gema * compute_curvature(i, j + 1) * dt / sqr(dx_) / rho_inter;
+            // std::cout << "tension_term: " << gema * compute_curvature(i, j + 1) * dt / sqr(dx_) / rho_inter << std::endl;
           }
         } else {
           matrix_.add_to_element(index, index, term);
@@ -1164,8 +1198,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         rhs_[index] -= v_weights_(i, j + 1) * (face_frac * v_(i, j + 1) / dx_ + (1.0f - face_frac) * v_a_(i, j + 1) / dx_);
         
         // bottom neighbour
-        float bot_phi = liquid_phi_(i, j - 1);
-
         theta = fraction_inside(centre_phi, bot_phi);
         rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = v_weights_(i, j) * dt / sqr(dx_) / rho_inter;
@@ -1176,7 +1208,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index - ni_, -term);
           if (theta > 0 && theta < 1) {
-            rhs_[index] += gema * compute_curvature(i + 1, j) * dt / sqr(dx_) / rho_inter;
+            rhs_[index] += gema * compute_curvature(i, j - 1) * dt / sqr(dx_) / rho_inter;
+            // std::cout << "tension_term: " << gema * compute_curvature(i, j - 1) * dt / sqr(dx_) / rho_inter << std::endl;
           }
         } else {
           matrix_.add_to_element(index, index, term);
@@ -1462,7 +1495,7 @@ void FluidSim::init_random_particles_2() {
          /*if (phi > 0 && y < nj_/ 2 && y > nj_ / 4) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
          if (phi > 0 && y <= nj_ / 4) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);*/
         // 场景：流体静止，上层气体下层液体
-        if (phi > 0 && y < nj_ / 2 && y > nj_ / 3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
+        if (phi > 0 && y < nj_ / 2 && y > nj_ / 2.8f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
         if (phi > 0 && y <= nj_ / 3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
 
         // TODO:圆形下1/3为液体，中间生成小气泡
