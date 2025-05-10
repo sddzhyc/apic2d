@@ -326,6 +326,7 @@ class FluidSim {
 
   /*! Data arrays for extrapolation */
   Array2c valid_, old_valid_;
+  Array2c valid_air_, old_valid_air_;
   Array2c u_valid_, v_valid_;
 
   /*! compressible fluid */

@@ -101,6 +101,8 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   nodal_solid_phi_.resize(ni_ + 1, nj_ + 1);
   valid_.resize(ni_ + 1, nj_ + 1);
   old_valid_.resize(ni_ + 1, nj_ + 1);
+  valid_air_.resize(ni_ + 1, nj_ + 1);
+  old_valid_air_.resize(ni_ + 1, nj_ + 1);
   liquid_phi_.resize(ni_, nj_);
   air_phi_.resize(ni_, nj_);
   merged_phi_.resize(ni_, nj_);
@@ -250,8 +252,8 @@ void FluidSim::advance(scalar dt) {
   extrapolate(u_, temp_u_, u_weights_, liquid_phi_, valid_, old_valid_, Vector2i(-1, 0), 2);
   extrapolate(v_, temp_v_, v_weights_, liquid_phi_, valid_, old_valid_, Vector2i(0, -1), 2);
 
-  extrapolate(u_a_, temp_u_a_, u_weights_, liquid_phi_, valid_, old_valid_, Vector2i(-1, 0), 2);
-  extrapolate(v_a_, temp_v_a_, v_weights_, liquid_phi_, valid_, old_valid_, Vector2i(0, -1), 2);
+  extrapolate(u_a_, temp_u_a_, u_weights_, air_phi_, valid_air_, old_valid_air_, Vector2i(-1, 0), 2);
+  extrapolate(v_a_, temp_v_a_, v_weights_, air_phi_, valid_air_, old_valid_air_, Vector2i(0, -1), 2);
   tock("extrapolate");
 
   // For extrapolated velocities, replace the normal component with
@@ -556,7 +558,7 @@ void FluidSim::compute_merged_distance() {
 
 // 计算曲率, 使用 standard central difference for the Laplacian
 scalar FluidSim::compute_curvature(int i, int j) { 
-  scalar nabla_phi = liquid_phi_(i + 1, j) + liquid_phi_(i - 1, j) + liquid_phi_(i, j + 1) + liquid_phi_(i, j - 1) - 4 * liquid_phi_(i, j);
+  scalar nabla_phi = merged_phi_(i + 1, j) + merged_phi_(i - 1, j) + merged_phi_(i, j + 1) + merged_phi_(i, j - 1) - 4 * liquid_phi_(i, j);
   nabla_phi /= (dx_ * dx_);
   return nabla_phi;
 }
@@ -1120,11 +1122,11 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       scalar gema = 1.0f;  // γ for water and air at normal conditions is approximately 0.073J/m^2
       
       // float centre_phi = liquid_phi_(i, j);
-      float centre_phi = liquid_phi_(i, j);
-      float right_phi = liquid_phi_(i + 1, j);
-      float left_phi = liquid_phi_(i - 1, j);
-      float top_phi = liquid_phi_(i, j + 1);
-      float bot_phi = liquid_phi_(i, j - 1);
+      float centre_phi = merged_phi_(i, j);
+      float right_phi = merged_phi_(i + 1, j);
+      float left_phi = merged_phi_(i - 1, j);
+      float top_phi = merged_phi_(i, j + 1);
+      float bot_phi = merged_phi_(i, j - 1);
 
       if ((liquid_phi_(i, j) < 0 || air_phi_(i, j) < 0) &&
           (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
@@ -1248,7 +1250,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       for (int i = 1; i < u_.ni - 1; ++i) {
         int index = i + j * ni_;
         if (u_weights_(i, j) > 0) {
-          float theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
+          float theta = fraction_inside(merged_phi_(i - 1, j), merged_phi_(i, j));
           float face_frac = theta;
           float rho_inter = rho_ * theta + (1.0f - theta) * rho_air_;
           if (face_frac > 0) {
@@ -1281,7 +1283,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           } else {
             v_valid_(i, j) = 0;
           }*/ 
-          float theta = fraction_inside(liquid_phi_(i, j - 1), liquid_phi_(i, j));
+          float theta = fraction_inside(merged_phi_(i, j - 1), merged_phi_(i, j));
           float face_frac = theta;
           float rho_inter = rho_ * theta + (1.0f - theta) * rho_air_;
           if (face_frac > 0) {
@@ -1488,8 +1490,10 @@ void FluidSim::init_random_particles_2() {
         // 中心生成气体被液体包裹的情况
         /*if (phi > dx_ * ni_ * 0.2 && phi <= dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
         if (phi > dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);*/
-        // 全气体粒子情况
-        // if (phi > dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
+        // 场景：全液体粒子情况
+        // if (phi > dx_ * ni_ * 0.2f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
+        // 场景：全气体粒子情况 
+        // if (phi > dx_ * ni_ * 0.2f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
         
          // 场景：流体静止，上层液体下层气体
          /*if (phi > 0 && y < nj_/ 2 && y > nj_ / 4) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
@@ -1969,6 +1973,7 @@ void extrapolate(Array2s& grid, Array2s& old_grid, const Array2s& grid_weight, c
   Array2s* pgrids[] = {&grid, &old_grid};
   Array2c* pvalids[] = {&valid, &old_valid_};
 
+  // 每次使用valid_前会重新赋值？
   for (int j = 1; j < grid.nj - 1; ++j) {
     for (int i = 1; i < grid.ni - 1; ++i) {
       valid(i, j) = grid_weight(i, j) > 0 && (grid_liquid_weight(i, j) < 0 || grid_liquid_weight(i + offset(0), j + offset(1)) < 0);
