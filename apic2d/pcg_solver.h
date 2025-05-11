@@ -239,7 +239,7 @@ void solve_lower_transpose_in_place(const SparseColumnLowerFactor<T> &factor, st
 
 template <class T>
 struct PCGSolver {
-  PCGSolver(void) { set_solver_parameters(1e-4, 300, 0.97, 0.25); }
+  PCGSolver(void) { set_solver_parameters(1e-4, 700, 0.97, 0.25); }
   // PCGSolver(void) { set_solver_parameters(1e-4, 100, 0.97, 0.25); }
 
   void set_solver_parameters(T tolerance_factor_, int max_iterations_, T modified_incomplete_cholesky_parameter_ = 0.97, T min_diagonal_ratio_ = 0.25) {
