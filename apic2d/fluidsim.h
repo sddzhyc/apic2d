@@ -271,7 +271,7 @@ class FluidSim {
 
   void compute_merged_distance();
 
-  scalar compute_curvature(int i, int j);
+  scalar compute_curvature(int i, int j, int is_x, int is_y);
 
   scalar compute_face_fraction(int phi_0, int phi_1);
 

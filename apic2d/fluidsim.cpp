@@ -534,9 +534,9 @@ void FluidSim::compute_merged_distance() {
     for (int i = 0; i < ni_; ++i) {
       Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // 网格中心位置
       // Estimate from particles 
-      scalar min_liquid_phi = 2 * dx_;// 初始化phi的初始值，也就是没有检索到粒子时的最大值
-      scalar min_air_phi = 2 * dx_;
-      m_sorter_->getNeigboringParticles_cell(i, j, -2, 2, -2, 2, [&](const NeighborParticlesType& neighbors) {
+      scalar min_liquid_phi = 4 * dx_;// 初始化phi的初始值，也就是没有检索到粒子时的最大值
+      scalar min_air_phi = 4 * dx_;
+      m_sorter_->getNeigboringParticles_cell(i, j, -4, 4, -4, 4, [&](const NeighborParticlesType& neighbors) {
           for (const Particle* p : neighbors) {
             scalar phi_temp = (pos - p->x_).norm() - std::max(p->radii_, min_radius);
             if (p->type_ == Particle::PT_LIQUID) {
@@ -546,7 +546,7 @@ void FluidSim::compute_merged_distance() {
             }
           }
       });
-      scalar min_merged_phi = 2 * dx_; 
+      scalar min_merged_phi = 4 * dx_; 
       // if (min_liquid_phi != 2 * dx_ || min_merged_phi != 2 * dx_) { // 将真空区域的phi值设置为2dx后，固液界面似乎变得更不稳定？
         min_merged_phi = (min_liquid_phi - min_air_phi) * 0.5f;
       //}
@@ -560,8 +560,11 @@ void FluidSim::compute_merged_distance() {
 }
 
 // 计算曲率, 使用 standard central difference for the Laplacian
-scalar FluidSim::compute_curvature(int i, int j) { 
-  scalar nabla_phi = merged_phi_(i + 1, j) + merged_phi_(i - 1, j) + merged_phi_(i, j + 1) + merged_phi_(i, j - 1) - 4 * liquid_phi_(i, j);
+scalar FluidSim::compute_curvature(int i, int j, int is_x, int is_y) { 
+  // scalar nabla_phi = merged_phi_(i + 1, j) + merged_phi_(i - 1, j) + merged_phi_(i, j + 1) + merged_phi_(i, j - 1) - 4 * merged_phi_(i, j);
+  // 2D模拟中的界面曲率计算
+  scalar nabla_phi = is_x * (merged_phi_(i + 1, j) + merged_phi_(i - 1, j) - 2 * merged_phi_(i, j)) +
+                     is_y * (merged_phi_(i, j + 1) + merged_phi_(i, j - 1) - 2 * merged_phi_(i, j));
   nabla_phi /= (dx_ * dx_);
   return nabla_phi;
 }
@@ -1122,7 +1125,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       rhs_[index] = 0;
       pressure_[index] = 0;
 
-      scalar gema = .0f;  // γ for water and air at normal conditions is approximately 0.073J/m^2
+      // scalar gema = .0f;
+      scalar gema = 7.3f;  // γ for water and air at normal conditions is approximately 0.073J/m^2
       
       // float centre_phi = liquid_phi_(i, j);
       float centre_phi = merged_phi_(i, j);
@@ -1145,7 +1149,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           // 添加表面张力压强 
           // TODO: 1. 检查求表面曲率的维度是否正确 2. 注意center_phi为液体和气体两种情况时的符号是否需要改变
           if (theta > 0 && theta < 1) {
-            rhs_[index] += gema * compute_curvature(i + 1, j) * dt / sqr(dx_) / rho_inter;
+            int sign = (right_phi > 0) - (right_phi < 0);
+            rhs_[index] += sign * gema * compute_curvature(i + 1, j, 0, 1) * dt / sqr(dx_) / rho_inter;  // sign为正时，对应right_phi > 0的情况
           }
         } else {  // 既无气体也无液体的真空单元格单独处理
           matrix_.add_to_element(index, index, term);
@@ -1168,7 +1173,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           matrix_.add_to_element(index, index - 1, -term);
 
         if (theta > 0 && theta < 1) {
-          rhs_[index] += gema * compute_curvature(i - 1, j) * dt / sqr(dx_) / rho_inter;
+          int sign = (left_phi > 0) - (left_phi < 0);
+          rhs_[index] += sign * gema * compute_curvature(i - 1, j, 0, 1) * dt / sqr(dx_) / rho_inter;
           }
         } else {
           matrix_.add_to_element(index, index, term);
@@ -1190,7 +1196,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           matrix_.add_to_element(index, index + ni_, -term);
 
           if (theta > 0 && theta < 1) {
-            rhs_[index] += gema * compute_curvature(i, j + 1) * dt / sqr(dx_) / rho_inter;
+            int sign = (top_phi > 0) - (top_phi < 0);
+            rhs_[index] += sign * gema * compute_curvature(i, j + 1, 1, 0) * dt / sqr(dx_) / rho_inter;
             // std::cout << "tension_term: " << gema * compute_curvature(i, j + 1) * dt / sqr(dx_) / rho_inter << std::endl;
           }
         } else {
@@ -1213,7 +1220,8 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index - ni_, -term);
           if (theta > 0 && theta < 1) {
-            rhs_[index] += gema * compute_curvature(i, j - 1) * dt / sqr(dx_) / rho_inter;
+            int sign = (bot_phi > 0) - (bot_phi < 0);
+            rhs_[index] += sign * gema * compute_curvature(i, j - 1, 1, 0) * dt / sqr(dx_) / rho_inter;
             // std::cout << "tension_term: " << gema * compute_curvature(i, j - 1) * dt / sqr(dx_) / rho_inter << std::endl;
           }
         } else {
@@ -1489,6 +1497,12 @@ void FluidSim::init_random_particles_2() {
         Vector2s pt = Vector2s(x_, y) + origin_;
 
         scalar phi = solid_distance(pt);
+
+       auto is_inside_circle = [](const scalar x, const scalar y, const scalar circle_center_x, const scalar circle_center_y, const scalar radius) {  
+          scalar dx = x - circle_center_x;  
+          scalar dy = y - circle_center_y;  
+          return (dx * dx + dy * dy) < (radius * radius);  
+       };
         //if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_, T_);
          // 中心生成气体被液体包裹的情况
         /*if (phi > dx_ * ni_ * 0.2 && phi <= dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
@@ -1504,10 +1518,14 @@ void FluidSim::init_random_particles_2() {
          if (phi > 0 && y <= nj_ / 4) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
         */
         // 场景：流体静止，上层气体下层液体
-        if (phi > 0 && y < nj_ / 2 && y > nj_ / 2.8f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
-        if (phi > 0 && y <= nj_ / 3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
+        /*if (phi > 0 && y < nj_ / 2 && y > nj_ / 2.8f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
+        if (phi > 0 && y <= nj_ / 3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);*/
 
-        // TODO:圆形下1/3为液体，中间生成小气泡
+        if (phi > 0 && y < nj_ * 0.3f && !is_inside_circle(x_, y, ni_ * 0.5f, nj_ * 0.2f, 2.0f))
+         particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
+        // 在以 ni_2 , nj_ / 3 为圆心，半径为nj_ / 3内生成气体粒子
+        if (is_inside_circle(x_, y, ni_ * 0.5f, nj_ * 0.2f, 2.0f))
+          particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_air_, 373.0f, Particle::PT_AIR);
       }
     }
   }
