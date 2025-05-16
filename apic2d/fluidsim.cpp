@@ -1,5 +1,5 @@
 
-#define _INIT_TEMP 300.0f
+#define _INIT_TEMP 370.0f
 
 #ifdef WIN32
 #define NOMINMAX
@@ -1488,6 +1488,7 @@ void FluidSim::init_random_particles() {
 }
 
 void FluidSim::init_random_particles_2() {
+  T_ = _INIT_TEMP;
   int num_particle = ni_ * nj_;
   for (int i = 0; i < ni_; ++i) {
     for (int j = 0; j < nj_; ++j) {
@@ -1521,7 +1522,7 @@ void FluidSim::init_random_particles_2() {
         /*if (phi > 0 && y < nj_ / 2 && y > nj_ / 2.8f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
         if (phi > 0 && y <= nj_ / 3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);*/
 
-        if (phi > 0 && y < nj_ * 0.3f && !is_inside_circle(x_, y, ni_ * 0.5f, nj_ * 0.2f, 2.0f))
+        if (phi > 0 && y < nj_ * 0.5f && !is_inside_circle(x_, y, ni_ * 0.5f, nj_ * 0.2f, 2.0f))
          particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
         // 在以 ni_2 , nj_ / 3 为圆心，半径为nj_ / 3内生成气体粒子
         if (is_inside_circle(x_, y, ni_ * 0.5f, nj_ * 0.2f, 2.0f))
@@ -1785,6 +1786,15 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
           p.temp_ = next_grid_temp;
         }
         sum_temp += p.temp_;
+
+        // 根据温度发生相变
+        if (p.temp_ > 373.0f) {
+          p.type_ = Particle::PT_AIR;
+          p.dens_ = rho_air_;
+        } else if (p.temp_ < 373.0f && p.type_ == Particle::PT_AIR) {
+          p.type_ = Particle::PT_LIQUID;
+          p.dens_ = rho_;
+        }
 
 #ifdef COMPRESSIBLE_FLUID
         // 密度传递回粒子
@@ -2805,7 +2815,10 @@ void FluidSim::solve_temperature(scalar dt) {
       int index = i + ni_ * j;
       float centre_phi = liquid_phi_(i, j);
 
-      scalar T0 = 373.0f;  // 底部边界加热温度
+      scalar T0 = 473.0f;  // 底部边界加热温度
+      scalar border_y = nj_ * 0.15;  // 加热边界
+      // scalar border_y = 0; // 加热边界
+
       if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
 
         /*laplancianT = (u_weights_(i + 1, j) * grid_temp_(i + 1, j) + u_weights_(i, j) * grid_temp_(i - 1, j) + v_weights_(i, j + 1) * grid_temp_(i, j + 1) +
@@ -2813,7 +2826,7 @@ void FluidSim::solve_temperature(scalar dt) {
                        (dx_ * dx_);*/
         //定义一个匿名函数，若单元格为固体，则设置对应温度为T0
         auto set_temp = [&](scalar grid_temp, scalar border_weights) { 
-            return border_weights * grid_temp + (1 - border_weights) * T0;
+            return j < border_y ? border_weights * grid_temp + (1 - border_weights) * T0 : grid_temp;
         };
         laplancianT = (set_temp(grid_temp_(i + 1, j), u_weights_(i + 1, j)) + set_temp(grid_temp_(i - 1, j), u_weights_(i, j)) +
                        set_temp(grid_temp_(i, j + 1), v_weights_(i, j + 1)) + set_temp(grid_temp_(i, j - 1), v_weights_(i, j)) - 4 * grid_temp_(i, j)) /
