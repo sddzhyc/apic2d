@@ -9,7 +9,7 @@
 #include "array2_utils.h"
 #include "fluidsim.h"
 
-//#define RENDER
+#define RENDER
 
 #ifdef RENDER
 #include "RenderWidget.h"
@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
   sim.initialize(o0, grid_width, grid_resolution, grid_resolution, 1.0);
   sim.set_root_boundary(std::move(FluidSim::Boundary(c0, Vector2s(rad0, 0.0), FluidSim::BT_CIRCLE, true)));
   sim.update_boundary();
-  sim.init_random_particles();
+  sim.init_random_particles_2();
 
   while (!renderer.ShouldClose()) {
     renderer.ProcessInput();  // 处理输入事件
@@ -110,6 +110,7 @@ int main(int argc, char **argv) {
     const auto& particles = sim.get_particles();
     // 遍历粒子并提取位置和密度  
     for (const auto& particle : particles) {  
+        if (particle.type_ == Particle::PT_AIR) continue;  // 跳过空气粒子的渲染
         glm::vec2 position(particle.x_[0] * 0.02f - 1.0f, particle.x_[1] * 0.02f - 1.0f);  
         float density = static_cast<float>(particle.dens_);  
 

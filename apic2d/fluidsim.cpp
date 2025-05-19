@@ -1788,7 +1788,7 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
         sum_temp += p.temp_;
 
         // 根据温度发生相变
-        if (p.temp_ > 373.0f) {
+        if (p.temp_ > 373.0f && p.type_ == Particle::PT_LIQUID) {
           p.type_ = Particle::PT_AIR;
           p.dens_ = rho_air_;
         } else if (p.temp_ < 373.0f && p.type_ == Particle::PT_AIR) {
