@@ -9,13 +9,16 @@
 #include "array2_utils.h"
 #include "fluidsim.h"
 
-#define RENDER
+// #define RENDER
 
 #ifdef RENDER
 #include "RenderWidget.h"
 #else
     #include "gluvi.h"
     #include "openglutils.h"
+
+    #include "backends/imgui_impl_glut.h"
+    #include "backends/imgui_impl_opengl3.h"
 #endif
 
 using namespace std;
@@ -94,6 +97,13 @@ int main(int argc, char **argv) {
   sim.init_random_particles_2();
 
   while (!renderer.ShouldClose()) {
+    renderer.PollEvents(); // 处理输入事件（如键盘、鼠标）
+
+    // 开始 ImGui 帧
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
     renderer.ProcessInput();  // 处理输入事件
 
     scalar max_timestep = std::min(step_limit, sim.compute_cfl() * cfl_number);
@@ -111,6 +121,7 @@ int main(int argc, char **argv) {
     // 遍历粒子并提取位置和密度  
     for (const auto& particle : particles) {  
         if (particle.type_ == Particle::PT_AIR) continue;  // 跳过空气粒子的渲染
+        // glm::vec2 position(particle.x_[0], particle.x_[1]);  
         glm::vec2 position(particle.x_[0] * 0.02f - 1.0f, particle.x_[1] * 0.02f - 1.0f);  
         float density = static_cast<float>(particle.dens_);  
 
@@ -124,7 +135,9 @@ int main(int argc, char **argv) {
     renderer.LoadVertexes_new(particlePositions, particleDensities);
 
     renderer.Update();
-    renderer.PollEvents();
+    // 4. 渲染 ImGui
+    renderer.DrawImGuiSidebar();  // 仅记录 ImGui 绘制命令
+
   }
 #else
   // Setup viewer stuff

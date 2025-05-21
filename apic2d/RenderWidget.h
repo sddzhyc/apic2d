@@ -5,6 +5,10 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include "imgui.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_opengl3.h"
+
 #include <chrono>
 #include <vector>
 #include "Shader.h"
@@ -32,6 +36,8 @@ public:
     void LoadVertexes(Fluid2d::ParticalSystem& ps);
 
     void LoadVertexes_new(std::vector<glm::vec2>& mPositions, std::vector<float>& mDensity);
+    
+    void DrawImGuiSidebar();
 
 private:
     bool CreateRenderWindow(); // 原名称CreateWindow似乎会与原项目的其他库函数冲突
@@ -43,7 +49,7 @@ private:
 private:
 
     GLFWwindow* mWindow = nullptr;
-    int mWindowWidth = 1000;
+    int mWindowWidth = 1250;
     int mWindowHeight = 1000;
 
     Glb::Shader* mParticalShader = nullptr;
@@ -62,7 +68,7 @@ private:
 
     std::chrono::system_clock::time_point mUpdateTime;
     
-
+    
 };
 
 
