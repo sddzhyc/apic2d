@@ -22,6 +22,11 @@
 
 #include "math_defs.h"
 
+#include "imgui.h"
+#include "backends/imgui_impl_glut.h"
+#include "backends/imgui_impl_opengl2.h"
+#include <glm/glm.hpp>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -423,6 +428,33 @@ static void gluviDisplay() {
   glutSwapBuffers();
 }
 
+static void gluviDisplay_new() {
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+  // draw the scene
+  if (camera) camera->gl_transform();
+  if (userDisplayFunc) userDisplayFunc();
+
+ // now draw widgets on top
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_LIGHTING);
+  glLineWidth(1);
+  // and probably more needs setting before widgets
+
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  gluOrtho2D(0, winwidth, 0, winheight);
+
+  root.display(0, winheight);
+
+  // and allow the camera to draw something on screen (e.g. for zooming extent)
+  if (camera) camera->display_screen();
+  glutSwapBuffers();
+  glutPostRedisplay();
+}
+
 static void gluviKeyboard(unsigned char key, int x, int y) {
   if (key == 27 || key == 'q') {
     exit(0);
@@ -684,8 +716,15 @@ void init(const char *windowtitle, int *argc, char **argv) {
   glutInit(argc, argv);
   glutInitWindowSize(winwidth, winheight);
   glutCreateWindow(windowtitle);
+
+  // 设置 FreeGLUT 回调（覆盖原有事件处理）
+  //glutKeyboardFunc(ImGui_ImplGLUT_KeyboardFunc);  // 传递键盘事件给 ImGui
+  //glutSpecialFunc(ImGui_ImplGLUT_SpecialFunc);
+  //glutMotionFunc(ImGui_ImplGLUT_MotionFunc);
+  //glutPassiveMotionFunc(ImGui_ImplGLUT_MotionFunc);
+  //glutMouseFunc(ImGui_ImplGLUT_MouseFunc);  // 传递鼠标事件给 ImGui
   glutReshapeFunc(gluviReshape);
-  glutDisplayFunc(gluviDisplay);
+  glutDisplayFunc(gluviDisplay_new);
   glutKeyboardFunc(gluviKeyboard);
   glutMouseFunc(gluviMouse);
   glutMotionFunc(gluviDrag);
@@ -704,8 +743,7 @@ void (*userDragFunc)(int x, int y) = 0;
 void (*userKeyFunc)(unsigned char key, int x, int y) = 0;
 Camera *camera = 0;
 WidgetList root(0);
-int winwidth = 1536, winheight = 1152;
-
+int winwidth = 1440, winheight = 700; // int winwidth = 1536, winheight = 1152;
 //=================================================================================
 
 void run(void) { glutMainLoop(); }

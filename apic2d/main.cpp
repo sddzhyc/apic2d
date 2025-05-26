@@ -18,7 +18,8 @@
     #include "openglutils.h"
 
     #include "backends/imgui_impl_glut.h"
-    #include "backends/imgui_impl_opengl3.h"
+    #include "backends/imgui_impl_opengl2.h"
+    #include "imgui.h"
 #endif
 
 using namespace std;
@@ -76,6 +77,96 @@ void DragFunc(int x, int y) {
   sim.paint_velocity(center, brush_radius, vel);
   old_mouse = new_mouse;
   old_mouse_time = new_mouse_time;
+}
+
+// Forward declarations of helper functions
+void MainLoopStep();
+// Our state
+static bool show_demo_window = true;
+static bool show_another_window = false;
+static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+
+void display_new() {
+  sim.render();
+  // Start the Dear ImGui frame
+  ImGui_ImplOpenGL2_NewFrame();
+  ImGui_ImplGLUT_NewFrame();
+  ImGui::NewFrame();
+  ImGuiIO& io = ImGui::GetIO();
+  // 3. Show another simple window.
+  if (show_another_window) {
+    ImGui::Begin("Another Window",
+                 &show_another_window);  // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+    ImGui::Text("Hello from another window!");
+    if (ImGui::Button("Close Me")) show_another_window = false;
+    ImGui::End();
+  }
+
+  sim.renderImGuiSidebar();
+  // Rendering
+  ImGui::Render();
+  glViewport(0, 0, (GLsizei)io.DisplaySize.x, (GLsizei)io.DisplaySize.y);
+
+  /*glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+  glClear(GL_COLOR_BUFFER_BIT);*/
+  // glUseProgram(0); // You may want this if using this code in an OpenGL 3+ context where shaders may be bound, but prefer using the GL3+ code.
+  ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+   glutSwapBuffers();
+   glutPostRedisplay();
+}
+
+void MainLoopStep() {
+  // Start the Dear ImGui frame
+  ImGui_ImplOpenGL2_NewFrame();
+  ImGui_ImplGLUT_NewFrame();
+  ImGui::NewFrame();
+  ImGuiIO& io = ImGui::GetIO();
+
+  // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+  if (show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
+
+  // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+  {
+    static float f = 0.0f;
+    static int counter = 0;
+
+    ImGui::Begin("Hello, world!");  // Create a window called "Hello, world!" and append into it.
+
+    ImGui::Text("This is some useful text.");           // Display some text (you can use a format strings too)
+    ImGui::Checkbox("Demo Window", &show_demo_window);  // Edit bools storing our window open/close state
+    ImGui::Checkbox("Another Window", &show_another_window);
+
+    ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
+    ImGui::ColorEdit3("clear color", (float*)&clear_color);  // Edit 3 floats representing a color
+
+    if (ImGui::Button("Button"))  // Buttons return true when clicked (most widgets return true when edited/activated)
+      counter++;
+    ImGui::SameLine();
+    ImGui::Text("counter = %d", counter);
+
+    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+    ImGui::End();
+  }
+
+  // 3. Show another simple window.
+  if (show_another_window) {
+    ImGui::Begin("Another Window",
+                 &show_another_window);  // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+    ImGui::Text("Hello from another window!");
+    if (ImGui::Button("Close Me")) show_another_window = false;
+    ImGui::End();
+  }
+
+  // Rendering
+  ImGui::Render();
+  glViewport(0, 0, (GLsizei)io.DisplaySize.x, (GLsizei)io.DisplaySize.y);
+  glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+  glClear(GL_COLOR_BUFFER_BIT);
+  // glUseProgram(0); // You may want this if using this code in an OpenGL 3+ context where shaders may be bound, but prefer using the GL3+ code.
+  ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+
+  /*glutSwapBuffers();
+  glutPostRedisplay();*/
 }
 #endif
 // Main testing code
@@ -140,10 +231,45 @@ int main(int argc, char **argv) {
 
   }
 #else
-  // Setup viewer stuff
   Gluvi::init("Basic Fluid Solver with Static Variational Boundaries", &argc, argv);
+  // Create GLUT window
+  //glutInit(&argc, argv);
+#ifdef __FREEGLUT_EXT_H__
+  glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_GLUTMAINLOOP_RETURNS);
+#endif
+  //glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_MULTISAMPLE);
+  //glutInitWindowSize(1280, 720);
+  //glutCreateWindow("Dear ImGui GLUT+OpenGL2 Example");
+
+  // Setup GLUT display function
+  // We will also call ImGui_ImplGLUT_InstallFuncs() to get all the other functions installed for us,
+  // otherwise it is possible to install our own functions and call the imgui_impl_glut.h functions ourselves.
+  //glutDisplayFunc(MainLoopStep);
+  //glutDisplayFunc(display_new);
+  // Setup Dear ImGui context 
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGuiIO& io = ImGui::GetIO();
+  (void)io;
+  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+  
+  // Setup Dear ImGui style
+  ImGui::StyleColorsDark();
+  // ImGui::StyleColorsLight();
+
+  // Setup Platform/Renderer backends
+  ImGui_ImplGLUT_Init(); // 似乎与原渲染函数互斥冲突？
+  ImGui_ImplOpenGL2_Init();
+
+  // Install GLUT handlers (glutReshapeFunc(), glutMotionFunc(), glutPassiveMotionFunc(), glutMouseFunc(), glutKeyboardFunc() etc.)
+  // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+  // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+  // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
+  // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
+  ImGui_ImplGLUT_InstallFuncs();
+  // Setup viewer stuff
   Gluvi::camera = &cam;
-  Gluvi::userDisplayFunc = display;
+  Gluvi::userDisplayFunc = display_new;
   glClearColor(1, 1, 1, 1);
   scalar rho_liquid = 1.0f;
   //scalar rho_air = 0.001f;
@@ -158,13 +284,33 @@ int main(int argc, char **argv) {
   Gluvi::userDragFunc = DragFunc;
 
   glutTimerFunc(1000, timer, 0);
-  Gluvi::run();
+  // Main loop
+  Gluvi::run(); //glutMainLoop();
+  //  Cleanup
+  ImGui_ImplOpenGL2_Shutdown();
+  ImGui_ImplGLUT_Shutdown();
+  ImGui::DestroyContext();
+
 #endif
 
   return 0;
 }
 
 void display(void) { sim.render(); }
+  /*void display(void) {
+  // 清屏
+  // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  sim.render();
+  // 开始 ImGui 帧
+  //ImGui_ImplGLUT_NewFrame();  // 必须在ImGui::NewFrame前调用
+  //ImGui_ImplOpenGL2_NewFrame();
+  ImGui_ImplOpenGL2_NewFrame();
+  ImGui::NewFrame();
+  sim.renderImGuiSidebar();
+  ImGui::Render();
+  ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+  // glutSwapBuffers();  // 只在这里交换缓冲
+}*/ 
 
 #ifdef RENDER
 #else
