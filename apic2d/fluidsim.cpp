@@ -1,6 +1,6 @@
 
-#define _INIT_TEMP 370.0f
-
+// #define _INIT_TEMP 370.0f
+#define _INIT_TEMP 363.0f
 #ifdef WIN32
 #define NOMINMAX
 #endif
@@ -1920,13 +1920,15 @@ void FluidSim::render() {
     glPointSize(5);
     glBegin(GL_POINTS);
     // 线性插值计算颜色
-    bool draw_particles_with_temp_color = false;
-    bool draw_particles_by_density = true;
+    bool draw_particles_with_temp_color = true;
+    bool draw_particles_by_density = false;
     if (draw_particles_with_temp_color) {
       glBegin(GL_POINTS);
       for (unsigned int i = 0; i < particles_.size(); ++i) {
         // 假设温度范围为 300K（蓝色）到 373K（红色）
-        float t = (particles_[i].temp_ - 273.0f) / (373.0f - 273.0f);  // 归一化温度到[0, 1]
+        scalar min_temp = 360;                                            // 最低温度
+        scalar max_temp = 375;                                               // 最高温度
+        float t = (particles_[i].temp_ - min_temp) / (max_temp - min_temp);  // 归一化温度到[0, 1]
         t = std::max(std::min(t, 1.0f), 0.0f);                         // 确保t在[0, 1]范围内
         float r, g, b;
         if (t < 0.5f) {
@@ -1952,6 +1954,12 @@ void FluidSim::render() {
           t = std::max(std::min(t, 1.0f), 0.0f);                    // 确保t在[0, 1]范围内
           float r = 0, g = 0, b = 0;
           b = t;                                 // 蓝色分量从 0 增加到 1
+          if (particles_[i].type_ == Particle::PT_AIR) {
+              //绘制浅灰色
+              r = 0.5f;
+              g = 0.5f;
+              b = 0.5f;
+          }
           glColor3f(r, g, b);                    
           glVertex2fv(particles_[i].x_.data()); 
         }
@@ -1968,6 +1976,58 @@ void FluidSim::render() {
 }
 void FluidSim::render2() {
   }
+
+void FluidSim::renderImGuiSidebar() {
+  ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+
+  // 控制渲染选项
+  ImGui::Checkbox("Draw Grid", &draw_grid_);
+  ImGui::Checkbox("Draw Velocities", &draw_velocities_);
+  ImGui::Checkbox("Draw Particles", &draw_particles_);
+
+  // 温度颜色映射控制
+  static float min_temp = 360.0f, max_temp = 375.0f;
+  ImGui::SliderFloat("Min Temp", &min_temp, 300.0f, 400.0f);
+  ImGui::SliderFloat("Max Temp", &max_temp, 300.0f, 400.0f);
+
+  // 粒子颜色模式选择
+  const char* color_modes[] = {"Temperature", "Density", "Default"};
+  static int current_mode = 0;
+  ImGui::Combo("Color Mode", &current_mode, color_modes, IM_ARRAYSIZE(color_modes));
+
+  ImGui::End();
+  //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // 清除颜色和深度缓冲区
+  // glPushMatrix();
+  // 全局变量存储参数（或封装在类中）
+  /* static float g_Scale = 1.0f;
+  static bool g_EnableEffect = false;
+  static glm::vec3 g_Color(1.0f, 1.0f, 1.0f);
+  // 获取窗口尺寸（使用freeglut函数）
+  int windowWidth = glutGet(GLUT_WINDOW_WIDTH);
+  int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);
+  std::cout << "ImGui::GetIO().DisplaySize.x: " << ImGui::GetIO().DisplaySize.x << ", ImGui::GetIO().DisplaySize.y: " << ImGui::GetIO().DisplaySize.y
+            << std::endl;// 该接口无法获取窗口大小，返回-1
+  // 渲染 ImGui 前重置视口到全窗口
+  //glViewport(0, 0, windowWidth, windowHeight);
+  // 设置侧边栏位置和大小（右侧 20%）
+  ImGui::SetNextWindowPos(ImVec2(windowWidth * 0.8f, 0), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(windowWidth * 0.2f, windowHeight), ImGuiCond_Always);
+  // 开始绘制窗口（禁用滚动条和调整大小）
+  ImGui::Begin("Control Panel", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
+  // 添加按钮
+  if (ImGui::Button("Reset Parameters")) {
+    g_Scale = 1.0f;
+    g_EnableEffect = false;
+    g_Color = glm::vec3(1.0f);
+  }
+  // 添加滑动条
+  ImGui::SliderFloat("Scale", &g_Scale, 0.1f, 2.0f);
+  ImGui::Checkbox("Enable Effect", &g_EnableEffect);
+  // 颜色选择器
+  ImGui::ColorEdit3("Color", &g_Color[0]);
+  ImGui::End();
+  */
+}
 
 FluidSim::Boundary::Boundary(const Vector2s& center, const Vector2s& parameter, BOUNDARY_TYPE type, bool inside)
     : center_(center), parameter_(parameter), type_(type), sign_(inside ? -1.0 : 1.0) {}
@@ -2815,7 +2875,7 @@ void FluidSim::solve_temperature(scalar dt) {
       int index = i + ni_ * j;
       float centre_phi = liquid_phi_(i, j);
 
-      scalar T0 = 473.0f;  // 底部边界加热温度
+      scalar T0 = 573.0f;  // 底部边界加热温度
       scalar border_y = nj_ * 0.15;  // 加热边界
       // scalar border_y = 0; // 加热边界
 

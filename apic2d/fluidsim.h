@@ -16,6 +16,11 @@
 #include "pcg_solver.h"
 #include "Partio.h"
 
+#include "imgui.h"
+#include "backends/imgui_impl_glut.h"
+#include "backends/imgui_impl_opengl2.h"
+#include <glm/glm.hpp>
+
 class sorter;
 
 struct Particle {
@@ -129,6 +134,7 @@ class FluidSim {
   void render();
   void render_boundaries(const Boundary& b);
   void render2();
+  void renderImGuiSidebar();
   scalar compute_cfl() const;
   scalar solid_distance(const Vector2s& pos) const;
   void solve_pressure_with_rho(scalar dt);
