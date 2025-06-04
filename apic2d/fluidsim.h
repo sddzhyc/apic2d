@@ -135,6 +135,7 @@ class FluidSim {
   void render_boundaries(const Boundary& b);
   void render2();
   void renderImGuiSidebar();
+  void renderImGuiStatusBar();
   scalar compute_cfl() const;
   scalar solid_distance(const Vector2s& pos) const;
   void solve_pressure_with_rho(scalar dt);
@@ -362,6 +363,13 @@ class FluidSim {
   bool draw_velocities_;
   bool draw_boundaries_;
   bool print_timing_;
+  bool is_paused = true;
+  bool draw_particles_with_temp_color = false;
+  bool draw_particles_by_density = true;
+  bool export_enabled_ = false; 
+  scalar gema = 7.3f;
+  scalar D_ = 1.0f;
+  int init_type_ = 0;
 
   TimePoint last_time_point_;
 

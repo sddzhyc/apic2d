@@ -44,7 +44,7 @@ const FluidSim::VELOCITY_ORDER velocity_order = FluidSim::VO_EULER;
 // options:
 // IO_LINEAR: linear interpolation
 // IO_QUADRATIC: quadratic interpolation
-//TODO: IO_QUADRATICµÄÆøÌåÁ£×Óg2p²åÖµ¹¦ÄÜÉĞÎ´ÊµÏÖ£¬ÒòÎªget_air_velocity_quadratic´ıÊµÏÖ
+//TODO: IO_QUADRATICçš„æ°”ä½“ç²’å­g2pæ’å€¼åŠŸèƒ½å°šæœªå®ç°ï¼Œå› ä¸ºget_air_velocity_quadraticå¾…å®ç°
 const FluidSim::INTERPOLATION_ORDER interpolation_order = FluidSim::IO_LINEAR;
 
 const scalar lagrangian_ratio = 0.97f;
@@ -111,7 +111,7 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   // compressible fluid
   comp_rho_.resize(ni_, nj_);
   saved_comp_rho_.resize(ni_, nj_);
-  comp_pressure_.resize(ni_, nj_); // ĞèÒª³õÊ¼»¯Æä´óĞ¡
+  comp_pressure_.resize(ni_, nj_); // éœ€è¦åˆå§‹åŒ–å…¶å¤§å°
 
   grid_temp_.resize(ni_, nj_);
   grid_rho_.resize(ni_, nj_);
@@ -123,9 +123,9 @@ void FluidSim::initialize(const Vector2s& origin, scalar width, int ni, int nj, 
   R = 461.5;
   b = 949.7;
   a = 2977.4;  // at room temperature
-  T_ = _INIT_TEMP;  // ³õÊ¼ÎÂ¶È27¶È
+  T_ = _INIT_TEMP;  // åˆå§‹æ¸©åº¦27åº¦
 
-  // ÔÚ0.9µ½1.1Çø¼äÉÏ¶Ôcoef_Bº¯Êı»æÖÆÇúÏß
+  // åœ¨0.9åˆ°1.1åŒºé—´ä¸Šå¯¹coef_Bå‡½æ•°ç»˜åˆ¶æ›²çº¿
   /*for (int i = 0; i < 0.2 / 0.00005; i++) {
     scalar x = 0.9 + i * 0.00005;
     std::cout << x << ", " << compute_coef_A(x) << ", " << compute_coef_B(x) << ", " << get_pressure(x) << std::endl;
@@ -205,6 +205,9 @@ void FluidSim::relaxation(scalar dt) {
 
 
 void FluidSim::advance(scalar dt) {
+  if (is_paused) {
+    return;  // Do not advance the simulation if paused
+  } 
   // Passively advect particles_
   tick();
   m_sorter_->sort(particles_, origin_, dx_);
@@ -217,31 +220,31 @@ void FluidSim::advance(scalar dt) {
   map_p2g();
 #endif
   tock("p2g");
-  save_velocity(); //¸üĞÂÇ°±£´æÔ­Íø¸ñËÙ¶È
+  save_velocity(); //æ›´æ–°å‰ä¿å­˜åŸç½‘æ ¼é€Ÿåº¦
 
   tick();
   add_force(dt);
-  tock("add force");  // ¼ÓÖØÁ¦
+  tock("add force");  // åŠ é‡åŠ›
 
   tick();
   // compute_liquid_distance();
   // compute_air_distance();
-  compute_merged_distance();  // ÁªºÏ¼ÆËãliquid_phi_, air_phi_, merged_phi_
+  compute_merged_distance();  // è”åˆè®¡ç®—liquid_phi_, air_phi_, merged_phi_
   tock("compute phi");
 
   // Compute finite-volume type_ face area weight for each velocity sample.
   tick();
   compute_weights();
-  tock("compute weights");  // Çólevel set
+  tock("compute weights");  // æ±‚level set
 
   // Set up and solve the variational pressure solve.
   tick();
 #ifdef COMPRESSIBLE_FLUID
-  solve_compressible_density_new(dt);  // ÆôÓÃ²»¿ÉÑ¹ËõÇó½â£¬¸üĞÂcomp_rho_
+  solve_compressible_density_new(dt);  // å¯ç”¨ä¸å¯å‹ç¼©æ±‚è§£ï¼Œæ›´æ–°comp_rho_
 #else 
   solve_pressure_with_air(dt);
 #endif
-  solve_temperature(dt);  // ¼ÆËãÎÂ¶È³¡
+  solve_temperature(dt);  // è®¡ç®—æ¸©åº¦åœº
   tock("solve pressure");
 
   // Pressure projection only produces valid velocities in faces with non-zero
@@ -271,7 +274,7 @@ void FluidSim::advance(scalar dt) {
     case IT_PIC:
       // The original PIC, which is a specific case of a more general (Affine)
       // FLIP scheme
-      map_g2p_flip_general(dt, 0.0, 0.0, 0.0, 0.0);  // TODO:´Ë´¦µ÷ÓÃÁËinterpolation º¯ÊıÀ´»ñÈ¡Á£×ÓÎ»ÖÃµÄÃÜ¶È²åÖµ£¬µ«ÊÇÊ¹ÓÃµÄÈ´ÊÇ¸üĞÂÇ°µÄÃÜ¶È£¬why£¿
+      map_g2p_flip_general(dt, 0.0, 0.0, 0.0, 0.0);  // TODO:æ­¤å¤„è°ƒç”¨äº†interpolation å‡½æ•°æ¥è·å–ç²’å­ä½ç½®çš„å¯†åº¦æ’å€¼ï¼Œä½†æ˜¯ä½¿ç”¨çš„å´æ˜¯æ›´æ–°å‰çš„å¯†åº¦ï¼Œwhyï¼Ÿ
       break;
 
     case IT_FLIP:
@@ -328,8 +331,8 @@ void FluidSim::add_force(scalar dt) {
   // gravity
   for (int j = 0; j < nj_ + 1; ++j) {
     for (int i = 0; i < ni_; ++i) {
-      v_(i, j) += -9.810 * dt; //¼õÉÙÖØÁ¦¼ÓËÙ¶È£¿
-      // TODO:ÊÇ·ñĞèÒªÎªÆøÌåÁ£×ÓÉèÖÃ²»Í¬µÄÖØÁ¦¼ÓËÙ¶È£¿
+      v_(i, j) += -9.810 * dt; //å‡å°‘é‡åŠ›åŠ é€Ÿåº¦ï¼Ÿ
+      // TODO:æ˜¯å¦éœ€è¦ä¸ºæ°”ä½“ç²’å­è®¾ç½®ä¸åŒçš„é‡åŠ›åŠ é€Ÿåº¦ï¼Ÿ
       v_a_(i, j) += -9.810 * dt;  
     }
   }
@@ -488,14 +491,14 @@ void FluidSim::compute_liquid_distance() {
   const scalar min_radius = dx_ / sqrtf(2.0);
   parallel_for(0, static_cast<int>(nj_), [&](int j) {
     for (int i = 0; i < ni_; ++i) {
-      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_; //Íø¸ñÖĞĞÄÎ»ÖÃ
+      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_; //ç½‘æ ¼ä¸­å¿ƒä½ç½®
       // Estimate from particles
       scalar min_liquid_phi = dx_;
       m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
         for (const Particle* p : neighbors) {
-          if (p->type_ == Particle::PT_AIR) continue;  // Ö»¿¼ÂÇÒºÌåÁ£×Ó
+          if (p->type_ == Particle::PT_AIR) continue;  // åªè€ƒè™‘æ¶²ä½“ç²’å­
           scalar phi_temp = (pos - p->x_).norm() - std::max(p->radii_, min_radius);
-          min_liquid_phi = std::min(min_liquid_phi, phi_temp); //Íø¸ñÖĞĞÄµ½×î½üÁÚÁ£×Ó±ßÔµµÄ¾àÀë
+          min_liquid_phi = std::min(min_liquid_phi, phi_temp); //ç½‘æ ¼ä¸­å¿ƒåˆ°æœ€è¿‘é‚»ç²’å­è¾¹ç¼˜çš„è·ç¦»
         }
       });
 
@@ -510,14 +513,14 @@ void FluidSim::compute_air_distance() {
   const scalar min_radius = dx_ / sqrtf(2.0);
   parallel_for(0, static_cast<int>(nj_), [&](int j) {
     for (int i = 0; i < ni_; ++i) {
-      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // Íø¸ñÖĞĞÄÎ»ÖÃ
+      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // ç½‘æ ¼ä¸­å¿ƒä½ç½®
       // Estimate from particles
-      scalar min_air_phi = dx_;  // ³õÊ¼»¯air_phiµÄ³õÊ¼Öµ£¬Ò²ÊÇÃ»ÓĞ¼ìË÷µ½Á£×ÓÊ±µÄ×î´óÖµ
+      scalar min_air_phi = dx_;  // åˆå§‹åŒ–air_phiçš„åˆå§‹å€¼ï¼Œä¹Ÿæ˜¯æ²¡æœ‰æ£€ç´¢åˆ°ç²’å­æ—¶çš„æœ€å¤§å€¼
       m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
         for (const Particle* p : neighbors) {
           if (p->type_ == Particle::PT_LIQUID) continue;
           scalar phi_temp = (pos - p->x_).norm() - std::max(p->radii_, min_radius);
-          min_air_phi = std::min(min_air_phi, phi_temp);  // Íø¸ñÖĞĞÄµ½×î½üÁÚÁ£×Ó±ßÔµµÄ¾àÀë
+          min_air_phi = std::min(min_air_phi, phi_temp);  // ç½‘æ ¼ä¸­å¿ƒåˆ°æœ€è¿‘é‚»ç²’å­è¾¹ç¼˜çš„è·ç¦»
         }
       });
       // "extrapolate" phi into solids if nearby
@@ -532,9 +535,9 @@ void FluidSim::compute_merged_distance() {
   const scalar min_radius = dx_ / sqrtf(2.0);
   parallel_for(0, static_cast<int>(nj_), [&](int j) {
     for (int i = 0; i < ni_; ++i) {
-      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // Íø¸ñÖĞĞÄÎ»ÖÃ
+      Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // ç½‘æ ¼ä¸­å¿ƒä½ç½®
       // Estimate from particles 
-      scalar min_liquid_phi = 4 * dx_;// ³õÊ¼»¯phiµÄ³õÊ¼Öµ£¬Ò²¾ÍÊÇÃ»ÓĞ¼ìË÷µ½Á£×ÓÊ±µÄ×î´óÖµ
+      scalar min_liquid_phi = 4 * dx_;// åˆå§‹åŒ–phiçš„åˆå§‹å€¼ï¼Œä¹Ÿå°±æ˜¯æ²¡æœ‰æ£€ç´¢åˆ°ç²’å­æ—¶çš„æœ€å¤§å€¼
       scalar min_air_phi = 4 * dx_;
       m_sorter_->getNeigboringParticles_cell(i, j, -4, 4, -4, 4, [&](const NeighborParticlesType& neighbors) {
           for (const Particle* p : neighbors) {
@@ -542,12 +545,12 @@ void FluidSim::compute_merged_distance() {
             if (p->type_ == Particle::PT_LIQUID) {
               min_liquid_phi = std::min(min_liquid_phi, phi_temp); 
             } else {
-            min_air_phi = std::min(min_air_phi, phi_temp);  // Íø¸ñÖĞĞÄµ½×î½üÁÚÁ£×Ó±ßÔµµÄ¾àÀë
+            min_air_phi = std::min(min_air_phi, phi_temp);  // ç½‘æ ¼ä¸­å¿ƒåˆ°æœ€è¿‘é‚»ç²’å­è¾¹ç¼˜çš„è·ç¦»
             }
           }
       });
       scalar min_merged_phi = 4 * dx_; 
-      // if (min_liquid_phi != 2 * dx_ || min_merged_phi != 2 * dx_) { // ½«Õæ¿ÕÇøÓòµÄphiÖµÉèÖÃÎª2dxºó£¬¹ÌÒº½çÃæËÆºõ±äµÃ¸ü²»ÎÈ¶¨£¿
+      // if (min_liquid_phi != 2 * dx_ || min_merged_phi != 2 * dx_) { // å°†çœŸç©ºåŒºåŸŸçš„phiå€¼è®¾ç½®ä¸º2dxåï¼Œå›ºæ¶²ç•Œé¢ä¼¼ä¹å˜å¾—æ›´ä¸ç¨³å®šï¼Ÿ
         min_merged_phi = (min_liquid_phi - min_air_phi) * 0.5f;
       //}
       // "extrapolate" phi into solids if nearby
@@ -559,10 +562,10 @@ void FluidSim::compute_merged_distance() {
   });
 }
 
-// ¼ÆËãÇúÂÊ, Ê¹ÓÃ standard central difference for the Laplacian
+// è®¡ç®—æ›²ç‡, ä½¿ç”¨ standard central difference for the Laplacian
 scalar FluidSim::compute_curvature(int i, int j, int is_x, int is_y) { 
   // scalar nabla_phi = merged_phi_(i + 1, j) + merged_phi_(i - 1, j) + merged_phi_(i, j + 1) + merged_phi_(i, j - 1) - 4 * merged_phi_(i, j);
-  // 2DÄ£ÄâÖĞµÄ½çÃæÇúÂÊ¼ÆËã
+  // 2Dæ¨¡æ‹Ÿä¸­çš„ç•Œé¢æ›²ç‡è®¡ç®—
   scalar nabla_phi = is_x * (merged_phi_(i + 1, j) + merged_phi_(i - 1, j) - 2 * merged_phi_(i, j)) +
                      is_y * (merged_phi_(i, j + 1) + merged_phi_(i, j - 1) - 2 * merged_phi_(i, j));
   nabla_phi /= (dx_ * dx_);
@@ -610,11 +613,11 @@ void FluidSim::particle_boundary_collision(scalar dt) {
 }
 
 /*!
-  \brief ¶ÔÎÂ¶È¡¢ÃÜ¶ÈµÈ´æ´¢ÓÚÍø¸ñÖĞĞÄµÄ±êÁ¿³¡²åÖµ»ØÁ£×ÓÎ»ÖÃ
+  \brief å¯¹æ¸©åº¦ã€å¯†åº¦ç­‰å­˜å‚¨äºç½‘æ ¼ä¸­å¿ƒçš„æ ‡é‡åœºæ’å€¼å›ç²’å­ä½ç½®
 */
 scalar FluidSim::get_temperature_quadratic(const Vector2s& position, const Array2s& grid_temp) {
   Vector2s p = (position - origin_) / dx_;
-  //Vector2s p0 = p - Vector2s(0.5, 0.5); ÎªÁËÖ±¹Û£¬²»×ª»»ÊıÑ§×ø±êµÄÎ»ÖÃ£¬¶øÊÇ¶ÔÍø¸ñ×ø±ê¼Ó0.5dxµÄÆ«ÒÆ
+  //Vector2s p0 = p - Vector2s(0.5, 0.5); ä¸ºäº†ç›´è§‚ï¼Œä¸è½¬æ¢æ•°å­¦åæ ‡çš„ä½ç½®ï¼Œè€Œæ˜¯å¯¹ç½‘æ ¼åæ ‡åŠ 0.5dxçš„åç§»
   Vector2s p0 = p;
 
   scalar ret = 0.0f;
@@ -764,9 +767,9 @@ Vector2s FluidSim::get_velocity_and_affine_matrix_with_order(const Vector2s& pos
 
 Vector2s FluidSim::get_air_velocity_and_affine_matrix_with_order(const Vector2s& position, scalar dt, FluidSim::VELOCITY_ORDER v_order,
                                                              FluidSim::INTERPOLATION_ORDER i_order, Matrix2s* affine_matrix) {
-  // auto get_velocity_func = (i_order == IO_LINEAR) ? &FluidSim::get_air_velocity : &FluidSim::get_velocity_quadratic; //TODO:Ìí¼Óget_velocity_quadraticµÄÆøÌåÊµÏÖ
+  // auto get_velocity_func = (i_order == IO_LINEAR) ? &FluidSim::get_air_velocity : &FluidSim::get_velocity_quadratic; //TODO:æ·»åŠ get_velocity_quadraticçš„æ°”ä½“å®ç°
   // auto get_affine_matrix_func = (i_order == IO_LINEAR) ? &FluidSim::get_air_affine_matrix : &FluidSim::get_affine_matrix_quadratic;
-  auto get_velocity_func = &FluidSim::get_air_velocity;  // TODO: Ìí¼Óget_velocity_quadraticµÄÆøÌåÊµÏÖ
+  auto get_velocity_func = &FluidSim::get_air_velocity;  // TODO: æ·»åŠ get_velocity_quadraticçš„æ°”ä½“å®ç°
   auto get_affine_matrix_func = &FluidSim::get_air_affine_matrix;
 
   switch (v_order) {
@@ -904,7 +907,7 @@ Vector2s FluidSim::get_saved_velocity_with_order(const Vector2s& position, Fluid
 
 Vector2s FluidSim::get_saved_air_velocity_with_order(const Vector2s& position, FluidSim::INTERPOLATION_ORDER i_order) {
   // return (i_order == IO_LINEAR) ? get_saved_air_velocity(position) : get_saved_velocity_quadratic(position);
-  return get_saved_air_velocity(position); //TODO:´ıÊµÏÖ¶ş´Î²åÖµµÄÇé¿ö
+  return get_saved_air_velocity(position); //TODO:å¾…å®ç°äºŒæ¬¡æ’å€¼çš„æƒ…å†µ
 }
 
 
@@ -926,7 +929,7 @@ scalar FluidSim::get_temperature(const Vector2s& position) {
 
 scalar FluidSim::get_saved_density(const Vector2s& position) {
   Vector2s p = (position - origin_) / dx_;
-  Vector2s p0 = p - Vector2s(0.5, 0.5);  // ½»´íÍø¸ñ£¬ÃÜ¶ÈÍø¸ñÖĞµÄ(i, j)ÊÇÑ¹Ç¿Íø¸ñ×ø±êÖĞµÄ (i - 1/2, j - 1/2)
+  Vector2s p0 = p - Vector2s(0.5, 0.5);  // äº¤é”™ç½‘æ ¼ï¼Œå¯†åº¦ç½‘æ ¼ä¸­çš„(i, j)æ˜¯å‹å¼ºç½‘æ ¼åæ ‡ä¸­çš„ (i - 1/2, j - 1/2)
   scalar dens_value = interpolate_value(p0, saved_comp_rho_);
 
   return dens_value;
@@ -935,11 +938,11 @@ scalar FluidSim::get_saved_density(const Vector2s& position) {
 /*!
   \brief  Given two signed distance values, determine what fraction of a connecting
           segment is "inside"
-          ²åÖµ¼ÆËãÁ½¸öÒìºÅ¾àÀë³¡º¯Êı²ÉÑùµã¼ä£¬Á÷Ìå±ß½ç´¦¾àÀë³¡º¯Êı=0µÄÎ»ÖÃ
-          ·µ»ØÒ»¸öthetaÖµ£¬µÈÓÚÒºÌåÒ»²à£¨phi < 0£©µ½0Öµ¼äµÄ¾àÀëÓë²ÉÑù¾àÀëµÄ±ÈÖµ
-          Á½µã¾ùĞ¡ÓÚ0Ê±£¬¼´Á½µã¼äÔÚÒºÌåÄÚ²¿£¬·µ»Ø1£»
-          Á½µã¾ù´óÓÚ0Ê±£¬¼´Á½µã¾ùÔÚÆøÌåÖĞ£¬·µ»Ø0£»
-          ·µ»ØÖµÔÚ[0, 1]Ö®¼ä
+          æ’å€¼è®¡ç®—ä¸¤ä¸ªå¼‚å·è·ç¦»åœºå‡½æ•°é‡‡æ ·ç‚¹é—´ï¼Œæµä½“è¾¹ç•Œå¤„è·ç¦»åœºå‡½æ•°=0çš„ä½ç½®
+          è¿”å›ä¸€ä¸ªthetaå€¼ï¼Œç­‰äºæ¶²ä½“ä¸€ä¾§ï¼ˆphi < 0ï¼‰åˆ°0å€¼é—´çš„è·ç¦»ä¸é‡‡æ ·è·ç¦»çš„æ¯”å€¼
+          ä¸¤ç‚¹å‡å°äº0æ—¶ï¼Œå³ä¸¤ç‚¹é—´åœ¨æ¶²ä½“å†…éƒ¨ï¼Œè¿”å›1ï¼›
+          ä¸¤ç‚¹å‡å¤§äº0æ—¶ï¼Œå³ä¸¤ç‚¹å‡åœ¨æ°”ä½“ä¸­ï¼Œè¿”å›0ï¼›
+          è¿”å›å€¼åœ¨[0, 1]ä¹‹é—´
 */
 scalar fraction_inside(scalar phi_left, scalar phi_right) {
   if (phi_left < 0 && phi_right < 0) return 1;
@@ -995,19 +998,19 @@ void FluidSim::solve_pressure(scalar dt) {
       float centre_phi = liquid_phi_(i, j);
       if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
         // right neighbour
-        float term = u_weights_(i + 1, j) * dt / sqr(dx_); // TODO: ÓëÔ­²î·Ö·½³Ì±È£¬ÉÙ³ËÁËÒ»¸öÃÜ¶È£¬¶ÔÇó½â½á¹ûÓĞÓ°ÏìÂğ£¿
+        float term = u_weights_(i + 1, j) * dt / sqr(dx_); // TODO: ä¸åŸå·®åˆ†æ–¹ç¨‹æ¯”ï¼Œå°‘ä¹˜äº†ä¸€ä¸ªå¯†åº¦ï¼Œå¯¹æ±‚è§£ç»“æœæœ‰å½±å“å—ï¼Ÿ
         float right_phi = liquid_phi_(i + 1, j);
         if (right_phi < 0) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index + 1, -term);
-        } else {  // liquid_phi_ >=0 Ê±£ºÁÚ¾Óµ¥Ôª¸ñÎª¿ÕÆø»ò¹ÌÌå±ß½çÊ±£¬Æä¶ÔÓ¦µÄ²ÎÊı(index, index + 1)µÄÏµÊı±ä»¯Á¿Îª0
-          float theta = fraction_inside(centre_phi, right_phi);  //theta ÊÇÊ²Ã´£¿
+        } else {  // liquid_phi_ >=0 æ—¶ï¼šé‚»å±…å•å…ƒæ ¼ä¸ºç©ºæ°”æˆ–å›ºä½“è¾¹ç•Œæ—¶ï¼Œå…¶å¯¹åº”çš„å‚æ•°(index, index + 1)çš„ç³»æ•°å˜åŒ–é‡ä¸º0
+          float theta = fraction_inside(centre_phi, right_phi);  //theta æ˜¯ä»€ä¹ˆï¼Ÿ
           if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, term / theta);  // TODO:thetaÊÇÊ²Ã´£¿
-                                                               // theta ÎŞÇî´óÊ±£¬ÏµÊı±ä»¯Á¿Îª0£¬¶ÔÓ¦ÁÚ¾Óµ¥Ôª¸ñÎª¹ÌÌå±ß½ç
-        }                                                      // theta = 1Ê±£¬ÏµÊı±ä»¯Á¿ÎªÔ­Öµ£¬¶ÔÓ¦ÁÚ¾Óµ¥Ôª¸ñÎª¿ÕÆø
-        rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_; // ½»´íÍø¸ñ£¬(i, j)¾ÍÊÇ (i - 1/2, j)
-                                                                  // u_weights_(i, j) = 0Ê±£¬×óÁÚµ¥Ôª¸ñÊÇ¹ÌÌå£¬¸ÃÁÚ¾Óµ¥Ôª¸ñ±ßÉÏµÄËÙ¶ÈÏîÎª0
+          matrix_.add_to_element(index, index, term / theta);  // TODO:thetaæ˜¯ä»€ä¹ˆï¼Ÿ
+                                                               // theta æ— ç©·å¤§æ—¶ï¼Œç³»æ•°å˜åŒ–é‡ä¸º0ï¼Œå¯¹åº”é‚»å±…å•å…ƒæ ¼ä¸ºå›ºä½“è¾¹ç•Œ
+        }                                                      // theta = 1æ—¶ï¼Œç³»æ•°å˜åŒ–é‡ä¸ºåŸå€¼ï¼Œå¯¹åº”é‚»å±…å•å…ƒæ ¼ä¸ºç©ºæ°”
+        rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_; // äº¤é”™ç½‘æ ¼ï¼Œ(i, j)å°±æ˜¯ (i - 1/2, j)
+                                                                  // u_weights_(i, j) = 0æ—¶ï¼Œå·¦é‚»å•å…ƒæ ¼æ˜¯å›ºä½“ï¼Œè¯¥é‚»å±…å•å…ƒæ ¼è¾¹ä¸Šçš„é€Ÿåº¦é¡¹ä¸º0
         // left neighbour
         term = u_weights_(i, j) * dt / sqr(dx_);
         float left_phi = liquid_phi_(i - 1, j);
@@ -1126,7 +1129,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       pressure_[index] = 0;
 
       // scalar gema = .0f;
-      scalar gema = 7.3f;  // ¦Ã for water and air at normal conditions is approximately 0.073J/m^2
+      //scalar gema = 7.3f;  // Î³ for water and air at normal conditions is approximately 0.073J/m^2
       
       // float centre_phi = liquid_phi_(i, j);
       float centre_phi = merged_phi_(i, j);
@@ -1146,22 +1149,22 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         if (liquid_phi_(i + 1, j) < 0 || air_phi_(i + 1, j) < 0) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index + 1, -term);
-          // Ìí¼Ó±íÃæÕÅÁ¦Ñ¹Ç¿ 
-          // TODO: 1. ¼ì²éÇó±íÃæÇúÂÊµÄÎ¬¶ÈÊÇ·ñÕıÈ· 2. ×¢Òâcenter_phiÎªÒºÌåºÍÆøÌåÁ½ÖÖÇé¿öÊ±µÄ·ûºÅÊÇ·ñĞèÒª¸Ä±ä
+          // æ·»åŠ è¡¨é¢å¼ åŠ›å‹å¼º 
+          // TODO: 1. æ£€æŸ¥æ±‚è¡¨é¢æ›²ç‡çš„ç»´åº¦æ˜¯å¦æ­£ç¡® 2. æ³¨æ„center_phiä¸ºæ¶²ä½“å’Œæ°”ä½“ä¸¤ç§æƒ…å†µæ—¶çš„ç¬¦å·æ˜¯å¦éœ€è¦æ”¹å˜
           if (theta > 0 && theta < 1) {
             int sign = (right_phi > 0) - (right_phi < 0);
-            rhs_[index] += sign * gema * compute_curvature(i + 1, j, 0, 1) * dt / sqr(dx_) / rho_inter;  // signÎªÕıÊ±£¬¶ÔÓ¦right_phi > 0µÄÇé¿ö
+            rhs_[index] += sign * gema * compute_curvature(i + 1, j, 0, 1) * dt / sqr(dx_) / rho_inter;  // signä¸ºæ­£æ—¶ï¼Œå¯¹åº”right_phi > 0çš„æƒ…å†µ
           }
-        } else {  // ¼ÈÎŞÆøÌåÒ²ÎŞÒºÌåµÄÕæ¿Õµ¥Ôª¸ñµ¥¶À´¦Àí
+        } else {  // æ—¢æ— æ°”ä½“ä¹Ÿæ— æ¶²ä½“çš„çœŸç©ºå•å…ƒæ ¼å•ç‹¬å¤„ç†
           matrix_.add_to_element(index, index, term);
           //float term = u_weights_(i + 1, j) * dt / sqr(dx_);
-          //// float theta = fraction_inside(centre_phi, right_phi);                                                          // theta ÊÇÊ²Ã´£¿
+          //// float theta = fraction_inside(centre_phi, right_phi);                                                          // theta æ˜¯ä»€ä¹ˆï¼Ÿ
           //if (theta < 0.01) theta = 0.01;
           //matrix_.add_to_element(index, index, term / theta);  
           // rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_;  
         }
         float face_frac = compute_face_fraction(centre_phi, right_phi);
-        rhs_[index] -= u_weights_(i + 1, j) * (face_frac * u_(i + 1, j) + (1.0f - face_frac) * u_a_(i + 1, j)) / dx_;  // ½»´íÍø¸ñ£¬(i, j)¾ÍÊÇ (i - 1/2, j)
+        rhs_[index] -= u_weights_(i + 1, j) * (face_frac * u_(i + 1, j) + (1.0f - face_frac) * u_a_(i + 1, j)) / dx_;  // äº¤é”™ç½‘æ ¼ï¼Œ(i, j)å°±æ˜¯ (i - 1/2, j)
         
         // left neighbour
         theta = fraction_inside(centre_phi, left_phi);
@@ -1169,7 +1172,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         term = u_weights_(i, j) * dt / sqr(dx_) / rho_inter;
         
         if (liquid_phi_(i - 1, j) < 0 || air_phi_(i - 1, j) < 0) {
-          matrix_.add_to_element(index, index, term);  // TODO:×¢Òâ²î·Ö·½³ÌµÄ·ûºÅ£ºp_i_jÏîÎªÕı
+          matrix_.add_to_element(index, index, term);  // TODO:æ³¨æ„å·®åˆ†æ–¹ç¨‹çš„ç¬¦å·ï¼šp_i_jé¡¹ä¸ºæ­£
           matrix_.add_to_element(index, index - 1, -term);
 
         if (theta > 0 && theta < 1) {
@@ -1237,7 +1240,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
     }
   });
 
-  /* //¼ì²é¾ØÕóÊÇ·ñÕı¶¨
+  /* //æ£€æŸ¥çŸ©é˜µæ˜¯å¦æ­£å®š
   if (!is_symmetric(matrix_)) {
     // std::cout << std::endl << "Matrix is not symmetric." << std::endl;
   } else {
@@ -1270,7 +1273,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           }
           if (face_frac < 1) {
             u_a_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / rho_inter;
-            // ĞèÒªÔö¼Óu_a_valid_Âğ£¿
+            // éœ€è¦å¢åŠ u_a_valid_å—ï¼Ÿ
           }
         } else {
           u_(i, j) = 0;
@@ -1330,22 +1333,22 @@ void FluidSim::solve_pressure_with_rho(scalar dt) {
       rhs_[index] = 0;
       pressure_[index] = 0;
       float centre_phi = liquid_phi_(i, j);
-      scalar rho = grid_rho_(i, j); // ÃÜ¶È
+      scalar rho = grid_rho_(i, j); // å¯†åº¦
       if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
         // right neighbour
-        float term = u_weights_(i + 1, j) * dt / sqr(dx_) / rho;  // TODO: ÓëÔ­²î·Ö·½³Ì±È£¬ÉÙ³ËÁËÒ»¸öÃÜ¶È£¬¶ÔÇó½â½á¹ûÓĞÓ°ÏìÂğ£¿
+        float term = u_weights_(i + 1, j) * dt / sqr(dx_) / rho;  // TODO: ä¸åŸå·®åˆ†æ–¹ç¨‹æ¯”ï¼Œå°‘ä¹˜äº†ä¸€ä¸ªå¯†åº¦ï¼Œå¯¹æ±‚è§£ç»“æœæœ‰å½±å“å—ï¼Ÿ
         float right_phi = liquid_phi_(i + 1, j);
         if (right_phi < 0) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index + 1, -term);
-        } else {  // liquid_phi_ >=0 Ê±£ºÁÚ¾Óµ¥Ôª¸ñÎª¿ÕÆø»ò¹ÌÌå±ß½çÊ±£¬Æä¶ÔÓ¦µÄ²ÎÊı(index, index + 1)µÄÏµÊı±ä»¯Á¿Îª0
-          float theta = fraction_inside(centre_phi, right_phi);  // theta ÊÇÊ²Ã´£¿
+        } else {  // liquid_phi_ >=0 æ—¶ï¼šé‚»å±…å•å…ƒæ ¼ä¸ºç©ºæ°”æˆ–å›ºä½“è¾¹ç•Œæ—¶ï¼Œå…¶å¯¹åº”çš„å‚æ•°(index, index + 1)çš„ç³»æ•°å˜åŒ–é‡ä¸º0
+          float theta = fraction_inside(centre_phi, right_phi);  // theta æ˜¯ä»€ä¹ˆï¼Ÿ
           if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, term / theta);  // TODO:thetaÊÇÊ²Ã´£¿
-                                                               // theta ÎŞÇî´óÊ±£¬ÏµÊı±ä»¯Á¿Îª0£¬¶ÔÓ¦ÁÚ¾Óµ¥Ôª¸ñÎª¹ÌÌå±ß½ç
-        }  // theta = 1Ê±£¬ÏµÊı±ä»¯Á¿ÎªÔ­Öµ£¬¶ÔÓ¦ÁÚ¾Óµ¥Ôª¸ñÎª¿ÕÆø
-        rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_;  // ½»´íÍø¸ñ£¬(i, j)¾ÍÊÇ (i - 1/2, j)
-                                                                   // u_weights_(i, j) = 0Ê±£¬×óÁÚµ¥Ôª¸ñÊÇ¹ÌÌå£¬¸ÃÁÚ¾Óµ¥Ôª¸ñ±ßÉÏµÄËÙ¶ÈÏîÎª0
+          matrix_.add_to_element(index, index, term / theta);  // TODO:thetaæ˜¯ä»€ä¹ˆï¼Ÿ
+                                                               // theta æ— ç©·å¤§æ—¶ï¼Œç³»æ•°å˜åŒ–é‡ä¸º0ï¼Œå¯¹åº”é‚»å±…å•å…ƒæ ¼ä¸ºå›ºä½“è¾¹ç•Œ
+        }  // theta = 1æ—¶ï¼Œç³»æ•°å˜åŒ–é‡ä¸ºåŸå€¼ï¼Œå¯¹åº”é‚»å±…å•å…ƒæ ¼ä¸ºç©ºæ°”
+        rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_;  // äº¤é”™ç½‘æ ¼ï¼Œ(i, j)å°±æ˜¯ (i - 1/2, j)
+                                                                   // u_weights_(i, j) = 0æ—¶ï¼Œå·¦é‚»å•å…ƒæ ¼æ˜¯å›ºä½“ï¼Œè¯¥é‚»å±…å•å…ƒæ ¼è¾¹ä¸Šçš„é€Ÿåº¦é¡¹ä¸º0
         // left neighbour
         term = u_weights_(i, j) * dt / sqr(dx_) / rho;
         float left_phi = liquid_phi_(i - 1, j);
@@ -1479,7 +1482,7 @@ void FluidSim::init_random_particles() {
         Vector2s pt = Vector2s(x_, y) + origin_;
 
         scalar phi = solid_distance(pt);
-        // ÓÃemplace_backµ÷ÓÃÁËParticleµÄ¹¹Ôìº¯Êı
+        // ç”¨emplace_backè°ƒç”¨äº†Particleçš„æ„é€ å‡½æ•°
         if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID); 
         //if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_, T_); 
       }
@@ -1504,29 +1507,48 @@ void FluidSim::init_random_particles_2() {
           scalar dy = y - circle_center_y;  
           return (dx * dx + dy * dy) < (radius * radius);  
        };
-        //if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_, T_);
-         // ÖĞĞÄÉú³ÉÆøÌå±»ÒºÌå°ü¹üµÄÇé¿ö
+       // init_type_ = 4;
+       switch (init_type_) {
+           case 0:  // åœºæ™¯ï¼šå…¨æ¶²ä½“ç²’å­æƒ…å†µ
+             if (phi > dx_ * ni_ * 0.2f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
+               break;
+           case 10: // åœºæ™¯ï¼šå…¨æ°”ä½“ç²’å­æƒ…å†µ 
+             if (phi > dx_ * ni_ * 0.2f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
+             break;
+           case 1: // åœºæ™¯ï¼šé™æ­¢åŠ çƒ­åœºæ™¯
+              if (phi > 0 && y < nj_ * 0.5f)
+              particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
+             break;
+           case 2:
+             // åœ¨ä»¥ ni_2 , nj_ / 3 ä¸ºåœ†å¿ƒï¼ŒåŠå¾„ä¸ºnj_ / 3å†…ç”Ÿæˆæ°”ä½“ç²’å­
+             if (phi > 0 && y < nj_ * 0.5f)
+               particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
+             if (is_inside_circle(x_, y, ni_ * 0.5f, nj_ * 0.2f, 2.0f))
+               particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_air_, 373.0f, Particle::PT_AIR); 
+            break;
+           case 3:  // ä¸­å¿ƒç”Ÿæˆæ°”ä½“è¢«æ¶²ä½“åŒ…è£¹çš„æƒ…å†µ
+             if (phi > dx_ * ni_ * 0.2 && phi <= dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_,Particle::PT_LIQUID); 
+             if (phi > dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
+             break;
+           default:
+             break;
+       }
+
+        // if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_, T_);
+        
         /*if (phi > dx_ * ni_ * 0.2 && phi <= dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
         if (phi > dx_ * ni_ * 0.3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
         */
-        // ³¡¾°£ºÈ«ÒºÌåÁ£×ÓÇé¿ö
-        // if (phi > dx_ * ni_ * 0.2f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
-        // ³¡¾°£ºÈ«ÆøÌåÁ£×ÓÇé¿ö 
-        // if (phi > dx_ * ni_ * 0.2f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
-        
-         // ³¡¾°£ºÁ÷Ìå¾²Ö¹£¬ÉÏ²ãÒºÌåÏÂ²ãÆøÌå
+         // åœºæ™¯ï¼šæµä½“é™æ­¢ï¼Œä¸Šå±‚æ¶²ä½“ä¸‹å±‚æ°”ä½“
          /*if (phi > 0 && y < nj_/ 2 && y > nj_ / 4) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
          if (phi > 0 && y <= nj_ / 4) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
         */
-        // ³¡¾°£ºÁ÷Ìå¾²Ö¹£¬ÉÏ²ãÆøÌåÏÂ²ãÒºÌå
+        // åœºæ™¯ï¼šæµä½“é™æ­¢ï¼Œä¸Šå±‚æ°”ä½“ä¸‹å±‚æ¶²ä½“
         /*if (phi > 0 && y < nj_ / 2 && y > nj_ / 2.8f) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), 0.01, 373.0f, Particle::PT_AIR);
         if (phi > 0 && y <= nj_ / 3) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);*/
 
-        if (phi > 0 && y < nj_ * 0.5f && !is_inside_circle(x_, y, ni_ * 0.5f, nj_ * 0.2f, 2.0f))
-         particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID);
-        // ÔÚÒÔ ni_2 , nj_ / 3 ÎªÔ²ĞÄ£¬°ë¾¶Îªnj_ / 3ÄÚÉú³ÉÆøÌåÁ£×Ó
-        if (is_inside_circle(x_, y, ni_ * 0.5f, nj_ * 0.2f, 2.0f))
-          particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_air_, 373.0f, Particle::PT_AIR);
+
+
       }
     }
   }
@@ -1557,7 +1579,7 @@ void FluidSim::map_p2g_linear() {
               sumu_air += w * (p->v_(0) + p->c_.col(0).dot(pos - p->x_));
               sumw_air += w;
             } else {
-            sumu += w * (p->v_(0) + p->c_.col(0).dot(pos - p->x_));  // p->c £¿£¿
+            sumu += w * (p->v_(0) + p->c_.col(0).dot(pos - p->x_));  // p->c ï¼Ÿï¼Ÿ
             sumw += w;
             }
           }
@@ -1592,14 +1614,14 @@ void FluidSim::map_p2g_linear() {
       v_a_(i, j) = sumw_air ? sumu_air / sumw_air : 0.0;
     }
   
-    // ÎÂ¶È´«µİ
+    // æ¸©åº¦ä¼ é€’
     for (int i = 0; i < ni_; ++i) {
       Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;
       scalar grid_mass = 0.0;
       scalar sum_T_x_mass = 0.0;
       m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
         for (const Particle* p : neighbors) {
-          scalar w = kernel::quadratic_kernel(p->x_ - pos, dx_);  // TODO:ÎÂ¶ÈµÄp2gºÍg2pÄ¿Ç°È«²¿Ê¹ÓÃµÄÊÇquadratic_kernel
+          scalar w = kernel::quadratic_kernel(p->x_ - pos, dx_);  // TODO:æ¸©åº¦çš„p2gå’Œg2pç›®å‰å…¨éƒ¨ä½¿ç”¨çš„æ˜¯quadratic_kernel
           grid_mass += w * p->mass_;
           sum_T_x_mass += p->temp_ * p->mass_ * w;
         }
@@ -1610,7 +1632,7 @@ void FluidSim::map_p2g_linear() {
     }
   });
 
-  //std::cout <<"Ò»ÂÖÄ£Äâ½áÊø£¡" << std::endl;
+  //std::cout <<"ä¸€è½®æ¨¡æ‹Ÿç»“æŸï¼" << std::endl;
 }
 
 void FluidSim::map_p2g_quadratic() {
@@ -1665,12 +1687,12 @@ void FluidSim::map_p2g_quadratic() {
       v_(i, j) = sumw > 0.0 ? sumu / sumw : 0.0;
       v_a_(i, j) = sumw_air > 0.0 ? sumu_air / sumw_air : 0.0;
     }
-    // ÎÂ¶È´«µİ
+    // æ¸©åº¦ä¼ é€’
     for (int i = 0; i < ni_; ++i) {
       Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;
       scalar grid_mass = 0.0;
       scalar sum_T_x_mass = 0.0;
-      // m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) { // Ô­À´²éÕÒµÄÊÇ2x3ÁÚÓòÍø¸ñÖĞµÄÁ£×Ó£¬²»ÖªÎªºÎÒªÕâÑùĞ´
+      // m_sorter_->getNeigboringParticles_cell(i, j, -1, 0, -1, 1, [&](const NeighborParticlesType& neighbors) { // åŸæ¥æŸ¥æ‰¾çš„æ˜¯2x3é‚»åŸŸç½‘æ ¼ä¸­çš„ç²’å­ï¼Œä¸çŸ¥ä¸ºä½•è¦è¿™æ ·å†™
       m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
       for (const Particle* p : neighbors) {
           scalar w = kernel::quadratic_kernel(p->x_ - pos, dx_);
@@ -1680,10 +1702,10 @@ void FluidSim::map_p2g_quadratic() {
       });
       grid_temp_(i, j) = grid_mass ? sum_T_x_mass / grid_mass : grid_temp_(i, j);
     }
-    // ÃÜ¶È´«µİ
+    // å¯†åº¦ä¼ é€’
     for (int i = 0; i < ni_; ++i) {
         Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;
-        scalar sumw = 0.0; // ÎÊÌâ£º¶ÔÓÚÃÜ¶ÈÕâÑùºÍmass_Ö®¼ä¹Ò¹³µÄÁ¿£¬ĞèÒªgatherºó³ıÒÔ×ÜÖÊÁ¿Âğ£¿
+        scalar sumw = 0.0; // é—®é¢˜ï¼šå¯¹äºå¯†åº¦è¿™æ ·å’Œmass_ä¹‹é—´æŒ‚é’©çš„é‡ï¼Œéœ€è¦gatheråé™¤ä»¥æ€»è´¨é‡å—ï¼Ÿ
         scalar grid_rho = 0.0; 
         m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
           for (const Particle* p : neighbors) {
@@ -1730,10 +1752,10 @@ void FluidSim::map_p2g_compressible() {
             v_(i, j) = sumw ? sumu / sumw : 0.0;
         }
 
-        // rho  //×¢Òâ£ºÕâÀï¶ÔrhoµÄ²åÖµÍêÈ«Ã»ÓĞÊ¹ÓÃÁ£×ÓµÄÖÊÁ¿
+        // rho  //æ³¨æ„ï¼šè¿™é‡Œå¯¹rhoçš„æ’å€¼å®Œå…¨æ²¡æœ‰ä½¿ç”¨ç²’å­çš„è´¨é‡
         if (j < nj_) {
             for (int i = 0; i < ni_; ++i) {
-            Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // ½»´íÍø¸ñ£¬ÃÜ¶ÈÔÚÑ¹Ç¿µ¥Ôª¸ñÖĞĞÄ
+            Vector2s pos = Vector2s((i + 0.5) * dx_, (j + 0.5) * dx_) + origin_;  // äº¤é”™ç½‘æ ¼ï¼Œå¯†åº¦åœ¨å‹å¼ºå•å…ƒæ ¼ä¸­å¿ƒ
                 scalar sumw = 0.0;
                 scalar sumrho = 0.0;
                 m_sorter_->getNeigboringParticles_cell(i, j, -1, 1, -1, 1, [&](const NeighborParticlesType& neighbors) {
@@ -1743,7 +1765,7 @@ void FluidSim::map_p2g_compressible() {
                         sumrho += p->dens_* w;
                     }
                 });
-                comp_rho_(i,j) = sumw ? sumrho / sumw : 0.0;// TODO: Ìí¼ÓÌå»ıÔª²»Í¬´øÀ´µÄÃÜ¶È±ä»¯£¿
+                comp_rho_(i,j) = sumw ? sumrho / sumw : 0.0;// TODO: æ·»åŠ ä½“ç§¯å…ƒä¸åŒå¸¦æ¥çš„å¯†åº¦å˜åŒ–ï¼Ÿ
             }
         }
     });
@@ -1763,7 +1785,7 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
     parallel_for(0, static_cast<int>(particles_.size()), [&](int i) {
         auto& p = particles_[i];
 
-        Matrix2s C = Matrix2s::Zero();  // APICÊ¹ÓÃ
+        Matrix2s C = Matrix2s::Zero();  // APICä½¿ç”¨
         Vector2s next_grid_velocity = (p.type_ == Particle::PT_LIQUID ? get_velocity_and_affine_matrix_with_order(p.x_, dt, velocity_order, interpolation_order, use_affine ? (&C) : nullptr)
                         : get_air_velocity_and_affine_matrix_with_order(p.x_, dt, velocity_order, interpolation_order, use_affine ? (&C) : nullptr));
         Vector2s lagrangian_velocity = p.v_;
@@ -1772,22 +1794,22 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
         if (lagrangian_ratio > 0.0) {
           original_grid_velocity = (p.type_ == Particle::PT_LIQUID ? get_saved_velocity_with_order(p.x_, interpolation_order)
                                                                    : get_saved_air_velocity_with_order(p.x_, interpolation_order));
-            p.v_ = next_grid_velocity + (lagrangian_velocity - original_grid_velocity) * lagrangian_ratio;  // flip£ºÖ»×ª»»ÔöÁ¿²¿·Ö
+            p.v_ = next_grid_velocity + (lagrangian_velocity - original_grid_velocity) * lagrangian_ratio;  // flipï¼šåªè½¬æ¢å¢é‡éƒ¨åˆ†
         } else {
             p.v_ = next_grid_velocity;
         }
-        // ÎÂ¶È´«µİ»ØÁ£×Ó
+        // æ¸©åº¦ä¼ é€’å›ç²’å­
         scalar lagrangian_temp = p.temp_;
         scalar next_grid_temp = get_temperature_quadratic(p.x_, grid_temp_);
         if (lagrangian_ratio > 0.0) {
-          scalar original_grid_temp = next_grid_temp;  // TODO:ÊµÏÖflipĞèÒªµÄsaved_temp´æ´¢£¬Ä¿Ç°ÔİÊ±ÓÃnext_grid_temp´úÌæ
+          scalar original_grid_temp = next_grid_temp;  // TODO:å®ç°flipéœ€è¦çš„saved_tempå­˜å‚¨ï¼Œç›®å‰æš‚æ—¶ç”¨next_grid_tempä»£æ›¿
           p.temp_ = next_grid_temp + (lagrangian_temp - original_grid_temp) * lagrangian_ratio;
         } else {
           p.temp_ = next_grid_temp;
         }
         sum_temp += p.temp_;
 
-        // ¸ù¾İÎÂ¶È·¢ÉúÏà±ä
+        // æ ¹æ®æ¸©åº¦å‘ç”Ÿç›¸å˜
         if (p.temp_ > 373.0f && p.type_ == Particle::PT_LIQUID) {
           p.type_ = Particle::PT_AIR;
           p.dens_ = rho_air_;
@@ -1797,21 +1819,21 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
         }
 
 #ifdef COMPRESSIBLE_FLUID
-        // ÃÜ¶È´«µİ»ØÁ£×Ó
+        // å¯†åº¦ä¼ é€’å›ç²’å­
         scalar lagrangian_rho = p.dens_;
         scalar next_grid_rho = get_temperature_quadratic(p.x_,comp_rho_);
         if (lagrangian_ratio > 0.0) {
           scalar original_grid_rho = get_temperature_quadratic(p.x_, saved_comp_rho_);
             p.dens_ = next_grid_rho + (lagrangian_rho - original_grid_rho) * lagrangian_ratio;
             /*if (next_grid_rho - original_grid_rho > 0) {
-              std::cout << "Íø¸ñÃÜ¶È¸üĞÂÖµ£º" << next_grid_rho - original_grid_rho << std::endl;
+              std::cout << "ç½‘æ ¼å¯†åº¦æ›´æ–°å€¼ï¼š" << next_grid_rho - original_grid_rho << std::endl;
             }*/
         } else {
             p.dens_ = next_grid_rho;
         }
         
         sum_rho += p.dens_;
-        //TODO:·¢ÏÖÊ¹ÓÃÈÎºÎ¹«Ê½¸üĞÂÖÊÁ¿ºó£¬ÃÜ¶È¶¼»áÑ¸ËÙË¥¼õÎª0£¨¾ßÌå±íÏÖ£ºÔÚÁ÷Ìå×ÔÓÉÂäÌåµ½±ß½çÇ°£¬³ÌĞò¾Í±ÀÁË£©
+        //TODO:å‘ç°ä½¿ç”¨ä»»ä½•å…¬å¼æ›´æ–°è´¨é‡åï¼Œå¯†åº¦éƒ½ä¼šè¿…é€Ÿè¡°å‡ä¸º0ï¼ˆå…·ä½“è¡¨ç°ï¼šåœ¨æµä½“è‡ªç”±è½ä½“åˆ°è¾¹ç•Œå‰ï¼Œç¨‹åºå°±å´©äº†ï¼‰
         //p.mass_ = p.dens_;
         //p.mass_ = M_PI * p.radii_ * p.radii_ * p.dens_;
         //p.mass_ = 4.0 / 3.0 * M_PI * p.radii_ * p.radii_ * p.dens_;
@@ -1846,10 +1868,10 @@ void FluidSim::map_g2p_flip_general(float dt, const scalar lagrangian_ratio, con
     // std::cout << "sum_temp: " << sum_temp << ", average: " << sum_temp / particles_.size() << std::endl;
 #ifdef COMPRESSIBLE_FLUID
     std::cout << "sum_rho in particles: " << sum_rho << std::endl;
-    ////Ææ¹ÖÏÖÏó£º¼ÓÁË¸öÑ­»·Óï¾äºó£¬Çó½â·´¶øÎÈ¶¨ÁËÒ»Ğ©£¿
+    ////å¥‡æ€ªç°è±¡ï¼šåŠ äº†ä¸ªå¾ªç¯è¯­å¥åï¼Œæ±‚è§£åè€Œç¨³å®šäº†ä¸€äº›ï¼Ÿ
     //for (int i = 0; i < particles_.size(); ++i) {
-    //  // ÖÊÁ¿ÊØºã
-    // particles_[i].dens_ = particles_[i].dens_ / sum_rho * (particles_.size() * 1.0); //Ô­ÃÜ¶ÈÎª1
+    //  // è´¨é‡å®ˆæ’
+    // particles_[i].dens_ = particles_[i].dens_ / sum_rho * (particles_.size() * 1.0); //åŸå¯†åº¦ä¸º1
     // particles_[i].mass_ = M_PI * particles_[i].radii_ * particles_[i].radii_ * particles_[i].dens_;
     //}
 #endif
@@ -1883,7 +1905,7 @@ void FluidSim::render_boundaries(const Boundary& b) {
 }
 
 void FluidSim::render() {
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Çå³ıÑÕÉ«ºÍÉî¶È»º³åÇø
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // æ¸…é™¤é¢œè‰²å’Œæ·±åº¦ç¼“å†²åŒº
   glPushMatrix();
   glScaled(1.0 / (dx_ * ni_), 1.0 / (dx_ * ni_), 1.0 / (dx_ * ni_));
 
@@ -1919,43 +1941,43 @@ void FluidSim::render() {
     glColor3f(0, 0, 1);
     glPointSize(5);
     glBegin(GL_POINTS);
-    // ÏßĞÔ²åÖµ¼ÆËãÑÕÉ«
-    bool draw_particles_with_temp_color = true;
-    bool draw_particles_by_density = false;
+    // çº¿æ€§æ’å€¼è®¡ç®—é¢œè‰²
+    //bool draw_particles_with_temp_color = false;
+    //bool draw_particles_by_density = true;
     if (draw_particles_with_temp_color) {
       glBegin(GL_POINTS);
       for (unsigned int i = 0; i < particles_.size(); ++i) {
-        // ¼ÙÉèÎÂ¶È·¶Î§Îª 300K£¨À¶É«£©µ½ 373K£¨ºìÉ«£©
-        scalar min_temp = 360;                                            // ×îµÍÎÂ¶È
-        scalar max_temp = 375;                                               // ×î¸ßÎÂ¶È
-        float t = (particles_[i].temp_ - min_temp) / (max_temp - min_temp);  // ¹éÒ»»¯ÎÂ¶Èµ½[0, 1]
-        t = std::max(std::min(t, 1.0f), 0.0f);                         // È·±£tÔÚ[0, 1]·¶Î§ÄÚ
+        // å‡è®¾æ¸©åº¦èŒƒå›´ä¸º 300Kï¼ˆè“è‰²ï¼‰åˆ° 373Kï¼ˆçº¢è‰²ï¼‰
+        scalar min_temp = 360;                                            // æœ€ä½æ¸©åº¦
+        scalar max_temp = 375;                                               // æœ€é«˜æ¸©åº¦
+        float t = (particles_[i].temp_ - min_temp) / (max_temp - min_temp);  // å½’ä¸€åŒ–æ¸©åº¦åˆ°[0, 1]
+        t = std::max(std::min(t, 1.0f), 0.0f);                         // ç¡®ä¿tåœ¨[0, 1]èŒƒå›´å†…
         float r, g, b;
         if (t < 0.5f) {
-          // ´ÓÀ¶É«µ½ÂÌÉ«
+          // ä»è“è‰²åˆ°ç»¿è‰²
           r = 0.0f;
-          g = t * 2.0f;         // ÂÌÉ«·ÖÁ¿´Ó 0 Ôö¼Óµ½ 1
-          b = 1.0f - t * 2.0f;  // À¶É«·ÖÁ¿´Ó 1 ¼õÉÙµ½ 0
+          g = t * 2.0f;         // ç»¿è‰²åˆ†é‡ä» 0 å¢åŠ åˆ° 1
+          b = 1.0f - t * 2.0f;  // è“è‰²åˆ†é‡ä» 1 å‡å°‘åˆ° 0
         } else {
-          // ´ÓÂÌÉ«µ½ºìÉ«
-          r = (t - 0.5f) * 2.0f;         // ºìÉ«·ÖÁ¿´Ó 0 Ôö¼Óµ½ 1
-          g = 1.0f - (t - 0.5f) * 2.0f;  // ÂÌÉ«·ÖÁ¿´Ó 1 ¼õÉÙµ½ 0
+          // ä»ç»¿è‰²åˆ°çº¢è‰²
+          r = (t - 0.5f) * 2.0f;         // çº¢è‰²åˆ†é‡ä» 0 å¢åŠ åˆ° 1
+          g = 1.0f - (t - 0.5f) * 2.0f;  // ç»¿è‰²åˆ†é‡ä» 1 å‡å°‘åˆ° 0
           b = 0.0f;
         }
-        glColor3f(r, g, b);               // ÉèÖÃÑÕÉ«
-        glVertex2fv(particles_[i].x_.data());  // »æÖÆÁ£×Ó
+        glColor3f(r, g, b);               // è®¾ç½®é¢œè‰²
+        glVertex2fv(particles_[i].x_.data());  // ç»˜åˆ¶ç²’å­
       }
     }
     else if (draw_particles_by_density) {
       if (draw_particles_by_density) {
         glBegin(GL_POINTS);
         for (unsigned int i = 0; i < particles_.size(); ++i) {
-          float t = (particles_[i].dens_) / (1.2f - .0f);  // ¹éÒ»»¯ÃÜ¶Èµ½[0, 1]
-          t = std::max(std::min(t, 1.0f), 0.0f);                    // È·±£tÔÚ[0, 1]·¶Î§ÄÚ
+          float t = (particles_[i].dens_) / (1.2f - .0f);  // å½’ä¸€åŒ–å¯†åº¦åˆ°[0, 1]
+          t = std::max(std::min(t, 1.0f), 0.0f);                    // ç¡®ä¿tåœ¨[0, 1]èŒƒå›´å†…
           float r = 0, g = 0, b = 0;
-          b = t;                                 // À¶É«·ÖÁ¿´Ó 0 Ôö¼Óµ½ 1
+          b = t;                                 // è“è‰²åˆ†é‡ä» 0 å¢åŠ åˆ° 1
           if (particles_[i].type_ == Particle::PT_AIR) {
-              //»æÖÆÇ³»ÒÉ«
+              //ç»˜åˆ¶æµ…ç°è‰²
               r = 0.5f;
               g = 0.5f;
               b = 0.5f;
@@ -1978,55 +2000,163 @@ void FluidSim::render2() {
   }
 
 void FluidSim::renderImGuiSidebar() {
-  ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+  // ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+  ImGui::Begin("æ§åˆ¶æ ", nullptr,  ImGuiWindowFlags_NoCollapse);
 
-  // ¿ØÖÆäÖÈ¾Ñ¡Ïî
-  ImGui::Checkbox("Draw Grid", &draw_grid_);
-  ImGui::Checkbox("Draw Velocities", &draw_velocities_);
-  ImGui::Checkbox("Draw Particles", &draw_particles_);
+  // ImGui::SetNextWindowSize(, (GLsizei)io.DisplaySize.y), ImGuiCond_Always);
+  
+      if (ImGui::Button(is_paused ? "ç»§ç»­" : "æš‚åœ")) {
+            is_paused = !is_paused;
+          }
+      ImGui::Separator();  
+      // ImGui::SameLine();
+      if (ImGui::Button("é‡æ–°æ¨¡æ‹Ÿ")) {
+        // é‡æ–°åˆå§‹åŒ–ç²’å­å’Œç½‘æ ¼ç­‰
+        particles_.clear();
+        init_random_particles_2();
+        outframe_ = 0;
+      }
+      // åˆå§‹åœºæ™¯é€‰æ‹©
+      //const char* init_modes[] = {"åœºæ™¯1ï¼šå…¨æ¶²ä½“ç²’å­æƒ…å†µ", "åœºæ™¯2ï¼šå…¨æ°”ä½“ç²’å­æƒ…å†µ", "åœºæ™¯3ï¼šé™æ­¢æ¶²ä½“", "åœºæ™¯4ï¼šä¸­å¿ƒæ°”æ³¡"};
+      const char* init_modes[] = {"åœºæ™¯1ï¼šå…¨æ¶²ä½“ç²’å­æƒ…å†µ", "åœºæ™¯2ï¼šé™æ­¢æ¶²ä½“" , "åœºæ™¯3ï¼šä¸­å¿ƒæ°”æ³¡"};
+      ImGui::Text("åˆå§‹åœºæ™¯é€‰æ‹©");
+      ImGui::Combo("åˆå§‹åœºæ™¯", &init_type_, init_modes, IM_ARRAYSIZE(init_modes));
+      // æ·»åŠ æ•°æ®å¯¼å‡ºæ§åˆ¶æŒ‰é’®ï¼Œæ§åˆ¶å®æ—¶å¯¼å‡ºçŠ¶æ€
+      ImGui::Separator();
+      ImGui::Text("æ•°æ®å¯¼å‡º");
+      ImGui::Checkbox("å®æ—¶å¯¼å‡º", &export_enabled_);
+      ImGui::SameLine();
+      if (ImGui::Button("å¯¼å‡ºå½“å‰å¸§")) {
+        // TODO:æ·»åŠ æŒ‰é’®ï¼Œç‚¹å‡»åå¼¹å‡ºé€‰æ‹©ä¿å­˜è·¯å¾„çš„ç³»ç»Ÿèµ„æºç®¡ç†å™¨
+        OutputPointDataBgeo("output/particles_", outframe_);
+        OutputGridDataBgeo("output/grid_", outframe_);
+      }
 
-  // ÎÂ¶ÈÑÕÉ«Ó³Éä¿ØÖÆ
-  static float min_temp = 360.0f, max_temp = 375.0f;
-  ImGui::SliderFloat("Min Temp", &min_temp, 300.0f, 400.0f);
-  ImGui::SliderFloat("Max Temp", &max_temp, 300.0f, 400.0f);
+      ImGui::Separator();
+      // å¯é€‰ï¼šæ˜¾ç¤ºå½“å‰çŠ¶æ€
+      // ImGui::Text("çŠ¶æ€ï¼š %s", is_paused ? "å·²æš‚åœ" : "è¿è¡Œä¸­");
+      // ImGui::Text("çŠ¶æ€ï¼š %s", is_paused ? "å·²æš‚åœ" : "è¿è¡Œä¸­");
+      // æ§åˆ¶æ¸²æŸ“é€‰é¡¹
+      ImGui::Checkbox("ç»˜åˆ¶ç½‘æ ¼", &draw_grid_);
+      ImGui::Checkbox("ç»˜åˆ¶é€Ÿåº¦å‘é‡", &draw_velocities_);
+      ImGui::Checkbox("ç»˜åˆ¶ç²’å­", &draw_particles_);
+      
+      ImGui::Separator();
 
-  // Á£×ÓÑÕÉ«Ä£Ê½Ñ¡Ôñ
-  const char* color_modes[] = {"Temperature", "Density", "Default"};
-  static int current_mode = 0;
-  ImGui::Combo("Color Mode", &current_mode, color_modes, IM_ARRAYSIZE(color_modes));
+      // ç²’å­é¢œè‰²æ¨¡å¼é€‰æ‹©
+      const char* color_modes[] = { "æ¸©åº¦æ¸²æŸ“", "ç›¸æ€æ¸²æŸ“" };
+      static int current_mode = 0;
+      ImGui::Text("ç²’å­é¢œè‰²æ¨¡å¼");
+      ImGui::Combo("ç²’å­é¢œè‰²æ¨¡å¼", &current_mode, color_modes, IM_ARRAYSIZE(color_modes));
+      // æ ¹æ®é€‰æ‹©è®¾ç½®æ¸²æŸ“æ¨¡å¼
+      if (current_mode == 0) {
+        draw_particles_with_temp_color = true;
+        draw_particles_by_density = false;
+      } else if (current_mode == 1) {
+        draw_particles_with_temp_color = false;
+        draw_particles_by_density = true;
+      }
 
-  ImGui::End();
-  //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // Çå³ıÑÕÉ«ºÍÉî¶È»º³åÇø
+      // æ¸©åº¦é¢œè‰²æ˜ å°„æ§åˆ¶
+      /* static float min_temp = 360.0f, max_temp = 375.0f;
+      ImGui::SliderFloat("Min Temp", &min_temp, 300.0f, 400.0f);
+      ImGui::SliderFloat("Max Temp", &max_temp, 300.0f, 400.0f); */
+
+      // æ‰“å°ç²’å­æ•°é‡
+      // ImGui::Text("æ¨¡æ‹Ÿç²’å­æ•°é‡: %zu", particles_.size());
+
+      ImGui::Separator();  // åˆ†å‰²çº¿
+
+      // æµä½“å‚æ•°è°ƒèŠ‚
+      ImGui::Text("æµä½“å‚æ•°è°ƒèŠ‚");
+      // å‡è®¾ rho_ã€T_ã€surface_tension_ æ˜¯ FluidSim çš„æˆå‘˜å˜é‡
+      ImGui::SliderFloat("æµä½“å¯†åº¦", &rho_, 0.1f, 5.0f, "%.3f");
+      ImGui::SliderFloat("åˆå§‹æ¸©åº¦", &T_, 250.0f, 500.0f, "%.1f");
+      ImGui::SliderFloat("è¡¨é¢å¼ åŠ›", &gema, 0.0f, 20.0f, "%.2f");  // å‡è®¾è¡¨é¢å¼ åŠ›å˜é‡åä¸º gema
+      ImGui::SliderFloat("æ¸©åº¦æ‰©æ•£å¸¸æ•°", &D_, 0.0f, 20.0f, "%.2f");
+      ImGui::Separator();  // å¦‚éœ€ç»§ç»­åˆ†å‰²
+      ImGui::End();
+  //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // æ¸…é™¤é¢œè‰²å’Œæ·±åº¦ç¼“å†²åŒº
   // glPushMatrix();
-  // È«¾Ö±äÁ¿´æ´¢²ÎÊı£¨»ò·â×°ÔÚÀàÖĞ£©
+  // å…¨å±€å˜é‡å­˜å‚¨å‚æ•°ï¼ˆæˆ–å°è£…åœ¨ç±»ä¸­ï¼‰
   /* static float g_Scale = 1.0f;
   static bool g_EnableEffect = false;
   static glm::vec3 g_Color(1.0f, 1.0f, 1.0f);
-  // »ñÈ¡´°¿Ú³ß´ç£¨Ê¹ÓÃfreeglutº¯Êı£©
+  // è·å–çª—å£å°ºå¯¸ï¼ˆä½¿ç”¨freeglutå‡½æ•°ï¼‰
   int windowWidth = glutGet(GLUT_WINDOW_WIDTH);
   int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);
   std::cout << "ImGui::GetIO().DisplaySize.x: " << ImGui::GetIO().DisplaySize.x << ", ImGui::GetIO().DisplaySize.y: " << ImGui::GetIO().DisplaySize.y
-            << std::endl;// ¸Ã½Ó¿ÚÎŞ·¨»ñÈ¡´°¿Ú´óĞ¡£¬·µ»Ø-1
-  // äÖÈ¾ ImGui Ç°ÖØÖÃÊÓ¿Úµ½È«´°¿Ú
+            << std::endl;// è¯¥æ¥å£æ— æ³•è·å–çª—å£å¤§å°ï¼Œè¿”å›-1
+  // æ¸²æŸ“ ImGui å‰é‡ç½®è§†å£åˆ°å…¨çª—å£
   //glViewport(0, 0, windowWidth, windowHeight);
-  // ÉèÖÃ²à±ßÀ¸Î»ÖÃºÍ´óĞ¡£¨ÓÒ²à 20%£©
+  // è®¾ç½®ä¾§è¾¹æ ä½ç½®å’Œå¤§å°ï¼ˆå³ä¾§ 20%ï¼‰
   ImGui::SetNextWindowPos(ImVec2(windowWidth * 0.8f, 0), ImGuiCond_Always);
   ImGui::SetNextWindowSize(ImVec2(windowWidth * 0.2f, windowHeight), ImGuiCond_Always);
-  // ¿ªÊ¼»æÖÆ´°¿Ú£¨½ûÓÃ¹ö¶¯ÌõºÍµ÷Õû´óĞ¡£©
+  // å¼€å§‹ç»˜åˆ¶çª—å£ï¼ˆç¦ç”¨æ»šåŠ¨æ¡å’Œè°ƒæ•´å¤§å°ï¼‰
   ImGui::Begin("Control Panel", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
-  // Ìí¼Ó°´Å¥
+  // æ·»åŠ æŒ‰é’®
   if (ImGui::Button("Reset Parameters")) {
     g_Scale = 1.0f;
     g_EnableEffect = false;
     g_Color = glm::vec3(1.0f);
   }
-  // Ìí¼Ó»¬¶¯Ìõ
+  // æ·»åŠ æ»‘åŠ¨æ¡
   ImGui::SliderFloat("Scale", &g_Scale, 0.1f, 2.0f);
   ImGui::Checkbox("Enable Effect", &g_EnableEffect);
-  // ÑÕÉ«Ñ¡ÔñÆ÷
+  // é¢œè‰²é€‰æ‹©å™¨
   ImGui::ColorEdit3("Color", &g_Color[0]);
   ImGui::End();
   */
+}
+
+void FluidSim::renderImGuiStatusBar() {
+  // è·å–ä¸»è§†å£ä¿¡æ¯
+  ImGuiViewport* viewport = ImGui::GetMainViewport();
+  ImVec2 bar_size = ImVec2(viewport->Size.x, 28.0f);  // 28åƒç´ é«˜ï¼Œå¯æ ¹æ®éœ€è¦è°ƒæ•´
+  ImVec2 bar_pos = ImVec2(viewport->Pos.x, viewport->Pos.y + viewport->Size.y - bar_size.y);
+
+  // è®¾ç½®ä¸‹ä¸€ä¸ªçª—å£çš„ä½ç½®å’Œå¤§å°
+  ImGui::SetNextWindowPos(bar_pos, ImGuiCond_Always);
+  ImGui::SetNextWindowSize(bar_size, ImGuiCond_Always);
+
+  // å¼€å§‹çŠ¶æ€æ çª—å£
+  ImGui::Begin(
+      "StatusBar", nullptr,
+      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings);
+
+  // æ˜¾ç¤ºè¿è¡ŒçŠ¶æ€ç­‰ä¿¡æ¯
+  ImGui::Text("çŠ¶æ€ï¼š%s", is_paused ? "å·²æš‚åœ" : "è¿è¡Œä¸­");
+  ImGui::SameLine();
+  ImGui::Text("å¸§ç‡: %.1f", ImGui::GetIO().Framerate);
+  // æ˜¾ç¤ºæ¨¡æ‹Ÿæ—¶é—´
+  ImGui::SameLine();
+  // ImGui::Text("æ¨¡æ‹Ÿæ—¶é—´: %.2f s", outframe_ * 0.01);
+  // æ˜¾ç¤ºç²’å­æ•°é‡
+  ImGui::SameLine();
+  ImGui::Text("ç²’å­æ•°é‡: %zu", particles_.size());
+  // æ˜¾ç¤ºç½‘æ ¼å¤§å°
+  ImGui::SameLine();
+  ImGui::Text("ç½‘æ ¼å¤§å°: %d x %d", ni_, nj_);
+  
+  ImGui::End();
+  /* 
+  ImGui::SetNextWindowPos(ImVec2(0, ImGui::GetIO().DisplaySize.y - 30), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, 30), ImGuiCond_Always);
+  ImGui::Begin("Status Bar", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
+
+  // æ˜¾ç¤ºå½“å‰å¸§æ•°
+  ImGui::Text("å¸§æ•°: %d", outframe_);
+
+
+  // æ˜¾ç¤ºå½“å‰æ¸©åº¦èŒƒå›´
+  scalar min_temp = std::numeric_limits<scalar>::max();
+  scalar max_temp = std::numeric_limits<scalar>::lowest();
+  for (const Particle& p : particles_) {
+    if (p.temp_ < min_temp) min_temp = p.temp_;
+    if (p.temp_ > max_temp) max_temp = p.temp_;
+  }
+  ImGui::Text("æ¸©åº¦èŒƒå›´: %.2f K - %.2f K", min_temp, max_temp);
+  ImGui::End();*/
 }
 
 FluidSim::Boundary::Boundary(const Vector2s& center, const Vector2s& parameter, BOUNDARY_TYPE type, bool inside)
@@ -2066,7 +2196,7 @@ void extrapolate(Array2s& grid, Array2s& old_grid, const Array2s& grid_weight, c
   Array2s* pgrids[] = {&grid, &old_grid};
   Array2c* pvalids[] = {&valid, &old_valid_};
 
-  // Ã¿´ÎÊ¹ÓÃvalid_Ç°»áÖØĞÂ¸³Öµ£¿
+  // æ¯æ¬¡ä½¿ç”¨valid_å‰ä¼šé‡æ–°èµ‹å€¼ï¼Ÿ
   for (int j = 1; j < grid.nj - 1; ++j) {
     for (int i = 1; i < grid.ni - 1; ++i) {
       valid(i, j) = grid_weight(i, j) > 0 && (grid_liquid_weight(i, j) < 0 || grid_liquid_weight(i + offset(0), j + offset(1)) < 0);
@@ -2363,19 +2493,19 @@ void FluidSim::solve_compressible_density(scalar dt) {
                     coef_A = t2dx2 * compute_coef_A((comp_rho_(i, j) + comp_rho_(i + 1, j))/2);
                     coef_B = (t2dx2 ) * compute_coef_B((comp_rho_(i, j) + comp_rho_(i + 1, j)) / 2);
 					float centre_term = u_weights_(i + 1, j) * coef_A;
-					float vel_term = 0.0f;  // u_weights_(i + 1, j) * (t2dx2 * u_(i + 1, j) / (2.0f * dx_));  ÓĞÊ²Ã´ÓÃ£¿
-                    // u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_ÊÇËÙ¶ÈÉ¢¶ÈÏî
+					float vel_term = 0.0f;  // u_weights_(i + 1, j) * (t2dx2 * u_(i + 1, j) / (2.0f * dx_));  æœ‰ä»€ä¹ˆç”¨ï¼Ÿ
+                    // u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_æ˜¯é€Ÿåº¦æ•£åº¦é¡¹
 					//float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  
 					float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;  
 
 					float term = u_weights_(i + 1, j) * (coef_A + coef_B * (comp_rho_(i + 1, j) - comp_rho_(i-1, j))) - vel_term;
 					float right_phi = liquid_phi_(i + 1, j);
-                    // liquid_phi_Ğ¡ÓÚ0Ê±£¬ÊÇÒºÌåµ¥Ôª¸ñ
+                    // liquid_phi_å°äº0æ—¶ï¼Œæ˜¯æ¶²ä½“å•å…ƒæ ¼
                     if (right_phi < 0) {
 						matrix_.add_to_element(index, index, local_term);
 						matrix_.add_to_element(index, index + 1, -term);
 					} else { 
-                        //ÁÚ¾Óµ¥Ôª¸ñÊÇÆøÌåÊ±
+                        //é‚»å±…å•å…ƒæ ¼æ˜¯æ°”ä½“æ—¶
 						float theta = fraction_inside(centre_phi, right_phi);
 						if (theta < 0.01) theta = 0.01;
 						matrix_.add_to_element(index, index, centre_term / theta);  // doesm't consider divergence term near interface
@@ -2439,12 +2569,12 @@ void FluidSim::solve_compressible_density(scalar dt) {
 
 					// time dependent term
 					matrix_.add_to_element(index, index, 1.0f);
-					rhs_[index] += saved_comp_rho_(i,j); // ÒÆÏî1/t£¬·½³Ì×ó±ß³Ët^2
+					rhs_[index] += saved_comp_rho_(i,j); // ç§»é¡¹1/tï¼Œæ–¹ç¨‹å·¦è¾¹ä¹˜t^2
 				}
 		}
 	});
     
-    // ¼ì²é¾ØÕóÊÇ·ñÕı¶¨
+    // æ£€æŸ¥çŸ©é˜µæ˜¯å¦æ­£å®š
     if (!is_symmetric(matrix_)) {
         std::cout << "Matrix is not symmetric." << std::endl;
     } else {
@@ -2459,7 +2589,7 @@ void FluidSim::solve_compressible_density(scalar dt) {
        } else {
           //std::cout << "Density solve succeeded! residual = " << residual << ", iters = " << iterations << std::endl;
         }
-    //std::cout << "³õÊ¼ÃÜ¶ÈÏÂµÄÑ¹Ç¿£º"<< get_pressure(1.0) << std::endl; //½á¹ûÎª0
+    //std::cout << "åˆå§‹å¯†åº¦ä¸‹çš„å‹å¼ºï¼š"<< get_pressure(1.0) << std::endl; //ç»“æœä¸º0
 	comp_pressure_.set_zero();
 	// Calculate pressure field using DVS equation
     parallel_for(0, std::max(u_.nj, v_.nj - 1), [&](int j) {
@@ -2472,7 +2602,7 @@ void FluidSim::solve_compressible_density(scalar dt) {
 		}
     });
 
-    // µ÷ÊÔÓÃ£º´òÓ¡comp_pressure_µÄ×î´óÖµ
+    // è°ƒè¯•ç”¨ï¼šæ‰“å°comp_pressure_çš„æœ€å¤§å€¼
     scalar max_comp_pressure = 0.0;
     for (int j = 0; j < nj_; ++j) {
         for (int i = 0; i < ni_; ++i) {
@@ -2492,7 +2622,7 @@ void FluidSim::solve_compressible_density(scalar dt) {
 						if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
 						if (theta < 0.01) theta = 0.01;
                         u_(i, j) -= dt * (comp_pressure_(i, j) - comp_pressure_(i - 1, j)) / dx_ / theta;
-                        // u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: ÊÇ·ñÓ¦¸ÃÔÙ³ıÒÔÃÜ¶È£¿
+                        // u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: æ˜¯å¦åº”è¯¥å†é™¤ä»¥å¯†åº¦ï¼Ÿ
 						u_valid_(i, j) = 1;
 					} else {
 						u_valid_(i, j) = 0;
@@ -2524,7 +2654,7 @@ void FluidSim::solve_compressible_density(scalar dt) {
 		}
 	});
 }
-//²»Ê¹ÓÃ||lapcian rho||µÄn+1Ê±¿ÌµÄ½üËÆ
+//ä¸ä½¿ç”¨||lapcian rho||çš„n+1æ—¶åˆ»çš„è¿‘ä¼¼
 void FluidSim::solve_compressible_density_new(scalar dt) {
   int system_size = ni_ * nj_;
   if (rhs_.size() != system_size) {
@@ -2548,7 +2678,7 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
       float ave_rho = 0.0f;
       if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
         // right neighbour
-        ave_rho = (comp_rho_(i, j) + comp_rho_(i + 1, j)) * 0.5;  // Î»ÓÚÁ½¸öÏàÁÚµ¥Ôª¸ñ±ß½çµÄÆ½¾ùÃÜ¶È
+        ave_rho = (comp_rho_(i, j) + comp_rho_(i + 1, j)) * 0.5;  // ä½äºä¸¤ä¸ªç›¸é‚»å•å…ƒæ ¼è¾¹ç•Œçš„å¹³å‡å¯†åº¦
         coef_A = t2dx2 * (compute_coef_A(ave_rho) + compute_coef_A2(ave_rho));
         float centre_term = u_weights_(i + 1, j) * coef_A;
         // float local_term = centre_term + vel_term + u_weights_(i + 1, j) * u_(i + 1, j) * dt / dx_;
@@ -2556,12 +2686,12 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
 
         float term = u_weights_(i + 1, j) * (coef_A /*+ coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))*/);
         float right_phi = liquid_phi_(i + 1, j);
-        // liquid_phi_Ğ¡ÓÚ0Ê±£¬ÊÇÒºÌåµ¥Ôª¸ñ
+        // liquid_phi_å°äº0æ—¶ï¼Œæ˜¯æ¶²ä½“å•å…ƒæ ¼
         if (right_phi < 0) {
           matrix_.add_to_element(index, index, local_term);
           matrix_.add_to_element(index, index + 1, -term);
         } else {
-          // ÁÚ¾Óµ¥Ôª¸ñÊÇÆøÌåÊ±
+          // é‚»å±…å•å…ƒæ ¼æ˜¯æ°”ä½“æ—¶
           float theta = fraction_inside(centre_phi, right_phi);
           if (theta < 0.01) theta = 0.01;
           matrix_.add_to_element(index, index, centre_term / theta);  // doesm't consider divergence term near interface
@@ -2571,10 +2701,10 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
             u_weights_(i + 1, j) * ((coef_A /*+ coef_B * (comp_rho_(i + 1, j) - comp_rho_(i, j))*/) * comp_rho_(i + 1, j) - coef_A * comp_rho_(i, j));
 
         // left neighbour
-        ave_rho = (comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5;  // Î»ÓÚÁ½¸öÏàÁÚµ¥Ôª¸ñ±ß½çµÄÆ½¾ùÃÜ¶È
+        ave_rho = (comp_rho_(i, j) + comp_rho_(i - 1, j)) * 0.5;  // ä½äºä¸¤ä¸ªç›¸é‚»å•å…ƒæ ¼è¾¹ç•Œçš„å¹³å‡å¯†åº¦
         coef_A = t2dx2 * (compute_coef_A(ave_rho) + compute_coef_A2(ave_rho));
      
-        /*term = u_weights_(i + 1, j) * (coef_A - coef_B * (comp_rho_(i, j) - comp_rho_(i - 1, j)));*/ //TODO:Ô­Ê¼Ğ´·¨µÄË÷ÒıËÆºõ±¾À´¾Í´íÁË£¿
+        /*term = u_weights_(i + 1, j) * (coef_A - coef_B * (comp_rho_(i, j) - comp_rho_(i - 1, j)));*/ //TODO:åŸå§‹å†™æ³•çš„ç´¢å¼•ä¼¼ä¹æœ¬æ¥å°±é”™äº†ï¼Ÿ
         term = u_weights_(i , j) * coef_A; 
         // local_term = centre_term - vel_term -u_weights_(i,j) * u_(i,j) * dt / dx_;
         local_term = centre_term - u_weights_(i, j) * u_(i, j) * dt / dx_;
@@ -2591,7 +2721,7 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
             u_weights_(i, j) * ((coef_A /*+ coef_B * (comp_rho_(i, j) - comp_rho_(i-1, j))*/) * comp_rho_(i - 1, j) - coef_A * comp_rho_(i, j));
 
         // top neighbour
-        ave_rho = (comp_rho_(i, j) + comp_rho_(i, j + 1)) * 0.5;  // Î»ÓÚÁ½¸öÏàÁÚµ¥Ôª¸ñ±ß½çµÄÆ½¾ùÃÜ¶È
+        ave_rho = (comp_rho_(i, j) + comp_rho_(i, j + 1)) * 0.5;  // ä½äºä¸¤ä¸ªç›¸é‚»å•å…ƒæ ¼è¾¹ç•Œçš„å¹³å‡å¯†åº¦
         coef_A = t2dx2 * (compute_coef_A(ave_rho) + compute_coef_A2(ave_rho));
 
         term = v_weights_(i, j + 1) * (coef_A /*+ coef_B * (comp_rho_(i, j + 1) - comp_rho_(i, j))*/);
@@ -2630,7 +2760,7 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
 
         // time dependent term
         matrix_.add_to_element(index, index, 1.0f);
-        rhs_[index] += -saved_comp_rho_(i, j);  // ÒÆÏî1/t£¬·½³Ì×ó±ß³Ët^2
+        rhs_[index] += -saved_comp_rho_(i, j);  // ç§»é¡¹1/tï¼Œæ–¹ç¨‹å·¦è¾¹ä¹˜t^2
 
         laplacianP_(i, j) += (u_weights_(i + 1, j) * comp_pressure_(i + 1, j) + u_weights_(i, j) * comp_pressure_(i - 1, j) +
                               v_weights_(i, j + 1) * comp_pressure_(i, j + 1) + v_weights_(i, j) * comp_pressure_(i, j - 1) - 4 * comp_pressure_(i, j)) /
@@ -2659,7 +2789,7 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
     }
   }
 
-  // ¼ì²é¾ØÕóÊÇ·ñÕı¶¨
+  // æ£€æŸ¥çŸ©é˜µæ˜¯å¦æ­£å®š
   /*if (!is_symmetric(matrix_)) {
     std::cout << "Matrix is not symmetric." << std::endl;
   } else {
@@ -2692,7 +2822,7 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
 
   std::cout << "sum_rho in grid: " << sum_rho << std::endl;
 
-  // µ÷ÊÔÓÃ£º´òÓ¡comp_pressure_µÄ×î´óÖµ
+  // è°ƒè¯•ç”¨ï¼šæ‰“å°comp_pressure_çš„æœ€å¤§å€¼
   scalar max_comp_pressure = 0.0;
   for (int j = 0; j < nj_; ++j) {
     for (int i = 0; i < ni_; ++i) {
@@ -2712,7 +2842,7 @@ void FluidSim::solve_compressible_density_new(scalar dt) {
             if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
             if (theta < 0.01) theta = 0.01;
             u_(i, j) -= dt * (comp_pressure_(i, j) - comp_pressure_(i - 1, j)) / dx_ / theta;
-            // u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: ÊÇ·ñÓ¦¸ÃÔÙ³ıÒÔÃÜ¶È£¿
+            // u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: æ˜¯å¦åº”è¯¥å†é™¤ä»¥å¯†åº¦ï¼Ÿ
             u_valid_(i, j) = 1;
           } else {
             u_valid_(i, j) = 0;
@@ -2808,14 +2938,14 @@ void FluidSim::solve_compressible_density_new2(scalar dt) {
     if (j < u_.nj) {
       for (int i = 1; i < u_.ni - 1; ++i) {
         sum_rho += comp_rho_(i, j);
-        comp_pressure_(i, j) = get_pressure(comp_rho_(i, j)) * 0.0005; // get_pressure¶ÔÓÚ¼«Ğ¡µÄÃÜ¶ÈÔöÁ¿¶¼ºÜÃô¸Ğ
+        comp_pressure_(i, j) = get_pressure(comp_rho_(i, j)) * 0.0005; // get_pressureå¯¹äºæå°çš„å¯†åº¦å¢é‡éƒ½å¾ˆæ•æ„Ÿ
       }
     }
   });
 
   std::cout << "sum_rho in grid: " << sum_rho << std::endl;
 
-  // µ÷ÊÔÓÃ£º´òÓ¡comp_pressure_µÄ×î´óÖµ
+  // è°ƒè¯•ç”¨ï¼šæ‰“å°comp_pressure_çš„æœ€å¤§å€¼
   scalar max_comp_pressure = 0.0;
   for (int j = 0; j < nj_; ++j) {
     for (int i = 0; i < ni_; ++i) {
@@ -2834,7 +2964,7 @@ void FluidSim::solve_compressible_density_new2(scalar dt) {
             if (liquid_phi_(i, j) >= 0 || liquid_phi_(i - 1, j) >= 0) theta = fraction_inside(liquid_phi_(i - 1, j), liquid_phi_(i, j));
             if (theta < 0.01) theta = 0.01;
             u_(i, j) -= dt * (comp_pressure_(i, j) - comp_pressure_(i - 1, j)) / dx_ / theta;
-            // u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: ÊÇ·ñÓ¦¸ÃÔÙ³ıÒÔÃÜ¶È£¿
+            // u_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / theta; //TODO: æ˜¯å¦åº”è¯¥å†é™¤ä»¥å¯†åº¦ï¼Ÿ
             u_valid_(i, j) = 1;
           } else {
             u_valid_(i, j) = 0;
@@ -2875,16 +3005,16 @@ void FluidSim::solve_temperature(scalar dt) {
       int index = i + ni_ * j;
       float centre_phi = liquid_phi_(i, j);
 
-      scalar T0 = 573.0f;  // µ×²¿±ß½ç¼ÓÈÈÎÂ¶È
-      scalar border_y = nj_ * 0.15;  // ¼ÓÈÈ±ß½ç
-      // scalar border_y = 0; // ¼ÓÈÈ±ß½ç
+      scalar T0 = 673.0f;  // åº•éƒ¨è¾¹ç•ŒåŠ çƒ­æ¸©åº¦
+      scalar border_y = nj_ * 0.15;  // åŠ çƒ­è¾¹ç•Œ
+      // scalar border_y = 0; // åŠ çƒ­è¾¹ç•Œ
 
       if (centre_phi < 0 && (u_weights_(i, j) > 0.0 || u_weights_(i + 1, j) > 0.0 || v_weights_(i, j) > 0.0 || v_weights_(i, j + 1) > 0.0)) {
 
         /*laplancianT = (u_weights_(i + 1, j) * grid_temp_(i + 1, j) + u_weights_(i, j) * grid_temp_(i - 1, j) + v_weights_(i, j + 1) * grid_temp_(i, j + 1) +
                         v_weights_(i, j) * grid_temp_(i, j - 1) - 4 * grid_temp_(i, j)) /
                        (dx_ * dx_);*/
-        //¶¨ÒåÒ»¸öÄäÃûº¯Êı£¬Èôµ¥Ôª¸ñÎª¹ÌÌå£¬ÔòÉèÖÃ¶ÔÓ¦ÎÂ¶ÈÎªT0
+        //å®šä¹‰ä¸€ä¸ªåŒ¿åå‡½æ•°ï¼Œè‹¥å•å…ƒæ ¼ä¸ºå›ºä½“ï¼Œåˆ™è®¾ç½®å¯¹åº”æ¸©åº¦ä¸ºT0
         auto set_temp = [&](scalar grid_temp, scalar border_weights) { 
             return j < border_y ? border_weights * grid_temp + (1 - border_weights) * T0 : grid_temp;
         };
@@ -2892,12 +3022,12 @@ void FluidSim::solve_temperature(scalar dt) {
                        set_temp(grid_temp_(i, j + 1), v_weights_(i, j + 1)) + set_temp(grid_temp_(i, j - 1), v_weights_(i, j)) - 4 * grid_temp_(i, j)) /
                       (dx_ * dx_);
 
-        scalar D = 0.5;  // ÈÈÀ©É¢ÂÊ
-        //scalar D = 0.000000145; //ÈÈÀ©É¢ÂÊ
-        /*if (laplancianT < 0) { //TODO: ·¢ÏÖÏàÁÚ¿ÕÆøµÄÁ÷Ìå²¢·ÇÍêÈ«¾øÈÈ£¬laplancianTÂÔÎª¸ºÊı
+        // scalar D = 0.5;  // çƒ­æ‰©æ•£ç‡
+        //scalar D = 0.000000145; //çƒ­æ‰©æ•£ç‡
+        /*if (laplancianT < 0) { //TODO: å‘ç°ç›¸é‚»ç©ºæ°”çš„æµä½“å¹¶éå®Œå…¨ç»çƒ­ï¼ŒlaplancianTç•¥ä¸ºè´Ÿæ•°
           std::cout << "laplancianT: " << laplancianT << std::endl;
         }*/
-        scalar rho_new = grid_temp_(i, j) + dt * laplancianT * D;
+        scalar rho_new = grid_temp_(i, j) + dt * laplancianT * D_;
         grid_temp_(i, j) = rho_new;
       }
     }
@@ -2950,10 +3080,10 @@ bool FluidSim::is_symmetric(const robertbridson::SparseMatrix<scalar>& matrix) {
   for (int i = 0; i < n; ++i) {
     for (int j = 0; j < n; ++j) {
       if (matrix(i, j) != matrix(j, i)) {
-        // ¼ÆËãÆä¶ÔÓ¦Ñ¹Ç¿Î»ÖÃµÄ×ø±ê
+        // è®¡ç®—å…¶å¯¹åº”å‹å¼ºä½ç½®çš„åæ ‡
         int x1 = i % ni_;
         int y1 = i / ni_;
-        // ´òÓ¡¸ÃÎ»ÖÃµÄ¼¸ºÎĞÅÏ¢£¬Èçu_weights_ºÍv_weights_, liquid_phi_
+        // æ‰“å°è¯¥ä½ç½®çš„å‡ ä½•ä¿¡æ¯ï¼Œå¦‚u_weights_å’Œv_weights_, liquid_phi_
         std::cout << "Matrix is not symmetric with values: " << matrix(i, j) << " and " << matrix(j, i) << std::endl;
         std::cout << "(" << x1 << ", " << y1 << "): " << " ---u_weights_ : " << u_weights_(x1, y1) << ", v_weights_: " << v_weights_(x1, y1)
                   << ", liquid_phi_: " << liquid_phi_(x1, y1) << std::endl;

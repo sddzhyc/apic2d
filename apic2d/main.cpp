@@ -82,7 +82,7 @@ void DragFunc(int x, int y) {
 // Forward declarations of helper functions
 void MainLoopStep();
 // Our state
-static bool show_demo_window = true;
+static bool show_demo_window = false;
 static bool show_another_window = false;
 static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
@@ -102,6 +102,30 @@ void display_new() {
     ImGui::End();
   }
 
+    // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+  /*{
+    static float f = 0.0f;
+    static int counter = 0;
+
+    ImGui::Begin("Hello, world!");  // Create a window called "Hello, world!" and append into it.
+
+    ImGui::Text("This is some useful text.");           // Display some text (you can use a format strings too)
+    ImGui::Checkbox("Demo Window", &show_demo_window);  // Edit bools storing our window open/close state
+    ImGui::Checkbox("Another Window", &show_another_window);
+
+    ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
+    ImGui::ColorEdit3("clear color", (float*)&clear_color);  // Edit 3 floats representing a color
+
+    if (ImGui::Button("Button"))  // Buttons return true when clicked (most widgets return true when edited/activated)
+      counter++;
+    ImGui::SameLine();
+    ImGui::Text("counter = %d", counter);
+
+    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+    ImGui::End();
+  }*/ 
+
+  sim.renderImGuiStatusBar();
   sim.renderImGuiSidebar();
   // Rendering
   ImGui::Render();
@@ -188,30 +212,30 @@ int main(int argc, char **argv) {
   sim.init_random_particles_2();
 
   while (!renderer.ShouldClose()) {
-    renderer.PollEvents(); // ´¦ÀíÊäÈëÊÂ¼ş£¨Èç¼üÅÌ¡¢Êó±ê£©
+    renderer.PollEvents(); // å¤„ç†è¾“å…¥äº‹ä»¶ï¼ˆå¦‚é”®ç›˜ã€é¼ æ ‡ï¼‰
 
-    // ¿ªÊ¼ ImGui Ö¡
+    // å¼€å§‹ ImGui å¸§
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    renderer.ProcessInput();  // ´¦ÀíÊäÈëÊÂ¼ş
+    renderer.ProcessInput();  // å¤„ç†è¾“å…¥äº‹ä»¶
 
     scalar max_timestep = std::min(step_limit, sim.compute_cfl() * cfl_number);
     int num_substeps = static_cast<int>(std::ceil(frame_time / max_timestep));
     scalar timestep = frame_time / static_cast<scalar>(num_substeps);
-    for (int i = 0; i < num_substeps; i++) {  // Çó½â
+    for (int i = 0; i < num_substeps; i++) {  // æ±‚è§£
       sim.advance(timestep);
     }
 
-    // ÌáÈ¡Á£×ÓÎ»ÖÃºÍÃÜ¶ÈĞÅÏ¢²¢×ª»»ÎªLoadVertexes_newËùĞèµÄ²ÎÊıÀàĞÍ  
+    // æå–ç²’å­ä½ç½®å’Œå¯†åº¦ä¿¡æ¯å¹¶è½¬æ¢ä¸ºLoadVertexes_newæ‰€éœ€çš„å‚æ•°ç±»å‹  
     std::vector<glm::vec2> particlePositions;  
     std::vector<float> particleDensities;  
-    // »ñÈ¡Á£×ÓÁĞ±í  
+    // è·å–ç²’å­åˆ—è¡¨  
     const auto& particles = sim.get_particles();
-    // ±éÀúÁ£×Ó²¢ÌáÈ¡Î»ÖÃºÍÃÜ¶È  
+    // éå†ç²’å­å¹¶æå–ä½ç½®å’Œå¯†åº¦  
     for (const auto& particle : particles) {  
-        if (particle.type_ == Particle::PT_AIR) continue;  // Ìø¹ı¿ÕÆøÁ£×ÓµÄäÖÈ¾
+        if (particle.type_ == Particle::PT_AIR) continue;  // è·³è¿‡ç©ºæ°”ç²’å­çš„æ¸²æŸ“
         // glm::vec2 position(particle.x_[0], particle.x_[1]);  
         glm::vec2 position(particle.x_[0] * 0.02f - 1.0f, particle.x_[1] * 0.02f - 1.0f);  
         float density = static_cast<float>(particle.dens_);  
@@ -222,12 +246,12 @@ int main(int argc, char **argv) {
           std::cout << "particle x = " << position[0] << ", y = " << position[1] << std::endl;
         }*/
     }
-    // µ÷ÓÃLoadVertexes_new·½·¨  
+    // è°ƒç”¨LoadVertexes_newæ–¹æ³•  
     renderer.LoadVertexes_new(particlePositions, particleDensities);
 
     renderer.Update();
-    // 4. äÖÈ¾ ImGui
-    renderer.DrawImGuiSidebar();  // ½ö¼ÇÂ¼ ImGui »æÖÆÃüÁî
+    // 4. æ¸²æŸ“ ImGui
+    renderer.DrawImGuiSidebar();  // ä»…è®°å½• ImGui ç»˜åˆ¶å‘½ä»¤
 
   }
 #else
@@ -258,7 +282,7 @@ int main(int argc, char **argv) {
   // ImGui::StyleColorsLight();
 
   // Setup Platform/Renderer backends
-  ImGui_ImplGLUT_Init(); // ËÆºõÓëÔ­äÖÈ¾º¯Êı»¥³â³åÍ»£¿
+  ImGui_ImplGLUT_Init();
   ImGui_ImplOpenGL2_Init();
 
   // Install GLUT handlers (glutReshapeFunc(), glutMotionFunc(), glutPassiveMotionFunc(), glutMouseFunc(), glutKeyboardFunc() etc.)
@@ -267,6 +291,42 @@ int main(int argc, char **argv) {
   // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
   // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
   ImGui_ImplGLUT_InstallFuncs();
+
+  // Load Fonts
+  // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
+  // - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
+  // - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display an
+  // error and quit).
+  // - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which
+  // ImGui_ImplXXXX_NewFrame below will call.
+  // - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
+  // - Read 'docs/FONTS.md' for more instructions and details.
+  // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
+   //io.Fonts->AddFontDefault();
+   //io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\msyh.ttc", 18.0f);
+   //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
+   //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
+   //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
+   //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
+  // æ¨èï¼šå…ˆç§»é™¤é»˜è®¤å­—ä½“
+  io.Fonts->Clear();
+  // åŠ è½½å¾®è½¯é›…é»‘ï¼ŒæŒ‡å®šä¸­æ–‡å­—ç¬¦é›†
+  //static const ImWchar chinese_ranges[] = {
+  //    0x0020, 0x00FF,  // åŸºæœ¬æ‹‰ä¸å­—ç¬¦
+  //    0x2000, 0x206F,  // å¸¸ç”¨æ ‡ç‚¹
+  //    0x3000, 0x30FF,  // ä¸­æ–‡æ ‡ç‚¹ã€æ—¥æ–‡ç‰‡å‡å
+  //    0x3400, 0x4DBF,  // æ‰©å±•A
+  //    0x4E00, 0x9FFF,  // å¸¸ç”¨æ±‰å­—
+  //    0xF900, 0xFAFF,  // å…¼å®¹æ±‰å­—
+  //    0,
+  //};
+
+  ImFont* font = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\msyh.ttc",  // å­—ä½“è·¯å¾„
+                                              18.0f,                           // å­—å·
+                                              nullptr,                         // å­—ä½“é…ç½®
+                                              io.Fonts->GetGlyphRangesChineseFull()  // å­—å½¢èŒƒå›´
+  );
+  IM_ASSERT(font != nullptr);
   // Setup viewer stuff
   Gluvi::camera = &cam;
   Gluvi::userDisplayFunc = display_new;
@@ -278,7 +338,7 @@ int main(int argc, char **argv) {
   sim.set_root_boundary(std::move(FluidSim::Boundary(c0, Vector2s(rad0, 0.0), FluidSim::BT_CIRCLE, true)));
   sim.update_boundary();
   //sim.init_random_particles();
-  sim.init_random_particles_2();  // ²ÉÓÃÆøÒº»ìºÏµÄ³õÊ¼Á£×Ó·Ö²¼
+  sim.init_random_particles_2();  // é‡‡ç”¨æ°”æ¶²æ··åˆçš„åˆå§‹ç²’å­åˆ†å¸ƒ
 
   Gluvi::userMouseFunc = MouseFunc;
   Gluvi::userDragFunc = DragFunc;
@@ -298,18 +358,18 @@ int main(int argc, char **argv) {
 
 void display(void) { sim.render(); }
   /*void display(void) {
-  // ÇåÆÁ
+  // æ¸…å±
   // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   sim.render();
-  // ¿ªÊ¼ ImGui Ö¡
-  //ImGui_ImplGLUT_NewFrame();  // ±ØĞëÔÚImGui::NewFrameÇ°µ÷ÓÃ
+  // å¼€å§‹ ImGui å¸§
+  //ImGui_ImplGLUT_NewFrame();  // å¿…é¡»åœ¨ImGui::NewFrameå‰è°ƒç”¨
   //ImGui_ImplOpenGL2_NewFrame();
   ImGui_ImplOpenGL2_NewFrame();
   ImGui::NewFrame();
   sim.renderImGuiSidebar();
   ImGui::Render();
   ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
-  // glutSwapBuffers();  // Ö»ÔÚÕâÀï½»»»»º³å
+  // glutSwapBuffers();  // åªåœ¨è¿™é‡Œäº¤æ¢ç¼“å†²
 }*/ 
 
 #ifdef RENDER
@@ -330,8 +390,8 @@ void timer(int junk) {
   scalar max_timestep = std::min(step_limit, sim.compute_cfl() * cfl_number);
   int num_substeps = static_cast<int>(std::ceil(frame_time / max_timestep));
   scalar timestep = frame_time / static_cast<scalar>(num_substeps);
-
-  for (int i = 0; i < num_substeps; ++i) sim.advance(timestep); //Ö´ĞĞÄ£Äânum_substeps´ÎºóäÖÈ¾Ò»Ö¡
+  // std::cout << "max_timestep = " << max_timestep << ", num_substeps = " << num_substeps << ", timestep = " << timestep << std::endl;
+  for (int i = 0; i < num_substeps; ++i) sim.advance(timestep); //æ‰§è¡Œæ¨¡æ‹Ÿnum_substepsæ¬¡åæ¸²æŸ“ä¸€å¸§
 
   glutSpecialFunc(specialKeys);
 }
