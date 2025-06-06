@@ -20,6 +20,7 @@
 
 #include "openglutils.h"
 
+#include "my_utils.h"
 #include <fstream>
 // Change here to try different integration scheme, options:
 // IT_PIC: original particle-in-cell (PIC)
@@ -2024,12 +2025,43 @@ void FluidSim::renderImGuiSidebar() {
       // 添加数据导出控制按钮，控制实时导出状态
       ImGui::Separator();
       ImGui::Text("数据导出");
+      static char folderPath[512] = "";
+      if (ImGui::InputText("文件夹路径", folderPath, sizeof(folderPath))) {
+        // 用户手动输入
+        savePath_ = folderPath;  // 更新保存路径
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("浏览...")) {
+        savePath_ = SelectFolderDialog();
+        if (!savePath_.empty()) {
+          strncpy(folderPath, savePath_.c_str(), sizeof(folderPath) - 1);
+          folderPath[sizeof(folderPath) - 1] = '\0';  // 确保字符串以 null 结尾
+        } else {
+          ImGui::Text("未选择文件夹");
+        }
+        // folderPath = savePath_.c_str();  // 更新输入框显示的路径（错误：不能将const char*赋值给char数组）
+        // 正确做法：将savePath_内容拷贝到folderPath
+        //字符串转utf8格式
+        strncpy(folderPath, savePath_.c_str(), sizeof(folderPath) - 1);
+        folderPath[sizeof(folderPath) - 1] = '\0';  // 确保字符串以 null 结尾
+      }
       ImGui::Checkbox("实时导出", &export_enabled_);
       ImGui::SameLine();
       if (ImGui::Button("导出当前帧")) {
-        // TODO:添加按钮，点击后弹出选择保存路径的系统资源管理器
-        OutputPointDataBgeo("output/particles_", outframe_);
-        OutputGridDataBgeo("output/grid_", outframe_);
+        // 若savePath_为空，则提示用户选择路径
+        if (savePath_.empty()) {
+          ImGui::Text("请先选择导出路径");
+        }
+        else {
+          // 确保savePath_以斜杠结尾
+          /*if (savePath_.back() != '/') {
+            savePath_ += '/';
+          }*/
+          OutputPointDataBgeo(savePath_ + "/point", outframe_);
+          OutputGridXDataBgeo(savePath_ + "/gridX", outframe_);
+          OutputGridYDataBgeo(savePath_ + "/gridY", outframe_);
+          OutputGridDataBgeo(savePath_ + "/grid", outframe_++);
+        }
       }
 
       ImGui::Separator();
@@ -2291,9 +2323,9 @@ scalar FluidSim::compute_coef_B2(const scalar& rho) {
 
 /*! Output Data Bgeo */
 void FluidSim::OutputPointDataBgeo(const std::string& s, const int frame) {
-    std::string file = s + std::to_string(frame) + ".bgeo";
+  std::string file = s + "/pointData" + std::to_string(frame) + ".bgeo";
     std::cout << "Writing to: " << file << std::endl;
-
+    EnsureDirectoryExists(s);
     Partio::ParticlesDataMutable* parts = Partio::create();
   Partio::ParticleAttribute pos, vel, rho, mass, temperature;
     pos = parts->addAttribute("position", Partio::VECTOR, 3);
@@ -2333,8 +2365,9 @@ void FluidSim::OutputPointDataBgeo(const std::string& s, const int frame) {
 }
 
 void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
-  std::string file = s + std::to_string(frame) + ".bgeo";
+  std::string file = s + "/gridData" + std::to_string(frame) + ".bgeo";
   std::cout << "Writing to: " << file << std::endl;
+  EnsureDirectoryExists(s);
 
   Partio::ParticlesDataMutable* parts = Partio::create();
   Partio::ParticleAttribute pos, rho, press, lapP, liquidPhi;
@@ -2381,8 +2414,9 @@ void FluidSim::OutputGridDataBgeo(const std::string& s, const int frame) {
 }
 
 void FluidSim::OutputGridXDataBgeo(const std::string& s, const int frame) {
-  std::string file = s + std::to_string(frame) + ".bgeo";
+  std::string file = s + "/gridXData" + std::to_string(frame) + ".bgeo";
   std::cout << "Writing to: " << file << std::endl;
+  EnsureDirectoryExists(s);
 
   Partio::ParticlesDataMutable* parts = Partio::create();
   Partio::ParticleAttribute pos, uf, velx, velxa, u_weight_;
@@ -2416,8 +2450,10 @@ void FluidSim::OutputGridXDataBgeo(const std::string& s, const int frame) {
 }
 
 void FluidSim::OutputGridYDataBgeo(const std::string& s, const int frame)  {
-  std::string file = s + std::to_string(frame) + ".bgeo";
+  std::string file = s + "/gridYData" + std::to_string(frame) + ".bgeo";
   std::cout << "Writing to: " << file << std::endl;
+  // 检查该目录是否存在，如果不存在则创建
+  EnsureDirectoryExists(s);
 
   Partio::ParticlesDataMutable* parts = Partio::create();
   Partio::ParticleAttribute pos, vf, vely, velya, v_weight_;

@@ -376,7 +376,6 @@ void display(void) { sim.render(); }
 #else
 void specialKeys(int key, int x, int y) {
   if (key == GLUT_KEY_F1) {
-    //if (true) {
     sim.OutputPointDataBgeo("D:/FluidSimulator/new_apic2d/point/pointData", sim.outframe_);
     sim.OutputGridXDataBgeo("D:/FluidSimulator/new_apic2d/gridX/gridXData", sim.outframe_);
     sim.OutputGridYDataBgeo("D:/FluidSimulator/new_apic2d/gridY/gridYData", sim.outframe_);
@@ -393,6 +392,12 @@ void timer(int junk) {
   // std::cout << "max_timestep = " << max_timestep << ", num_substeps = " << num_substeps << ", timestep = " << timestep << std::endl;
   for (int i = 0; i < num_substeps; ++i) sim.advance(timestep); //执行模拟num_substeps次后渲染一帧
 
+  if (sim.export_enabled_ && sim.is_paused == false) {
+    sim.OutputPointDataBgeo(sim.savePath_ + "/point", sim.outframe_);
+    sim.OutputGridXDataBgeo(sim.savePath_ + "/gridX", sim.outframe_);
+    sim.OutputGridYDataBgeo(sim.savePath_ + "/gridY", sim.outframe_);
+    sim.OutputGridDataBgeo(sim.savePath_ + "/grid", sim.outframe_++);
+  }
   glutSpecialFunc(specialKeys);
 }
 #endif

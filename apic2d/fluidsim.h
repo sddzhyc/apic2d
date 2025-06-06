@@ -61,6 +61,9 @@ class FluidSim {
   scalar T_;
   int outframe_;
 
+  std::string savePath_ = "D:/FluidSimulator/new_apic2d";
+  bool export_enabled_ = false;
+  bool is_paused = true;
   enum INTEGRATOR_TYPE {
     IT_PIC,
     IT_FLIP,
@@ -363,10 +366,8 @@ class FluidSim {
   bool draw_velocities_;
   bool draw_boundaries_;
   bool print_timing_;
-  bool is_paused = true;
   bool draw_particles_with_temp_color = false;
   bool draw_particles_by_density = true;
-  bool export_enabled_ = false; 
   scalar gema = 7.3f;
   scalar D_ = 1.0f;
   int init_type_ = 0;
