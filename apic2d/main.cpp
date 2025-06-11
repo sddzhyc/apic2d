@@ -61,6 +61,14 @@ scalar brush_radius = 2.5;
 
 #ifdef RENDER
 #else
+
+float GetDPIScale() {
+  HDC screen = GetDC(0);
+  float dpi = GetDeviceCaps(screen, LOGPIXELSX);
+  ReleaseDC(0, screen);
+  return dpi / 96.0f;  // 96为100%缩放
+}
+
 void MouseFunc(int button, int state, int x, int y) {
   cam.transform_mouse(x, y, old_mouse.data());
   old_mouse_time = Clock::now();
@@ -321,11 +329,15 @@ int main(int argc, char **argv) {
   //    0,
   //};
 
+  float dpi_scale = GetDPIScale();
+
   ImFont* font = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\msyh.ttc",  // 字体路径
                                               18.0f,                           // 字号
                                               nullptr,                         // 字体配置
                                               io.Fonts->GetGlyphRangesChineseFull()  // 字形范围
   );
+  io.FontGlobalScale = 1.0f;  // 字体已放大，不再需要全局缩放
+  ImGui::GetStyle().ScaleAllSizes(dpi_scale);
   IM_ASSERT(font != nullptr);
   // Setup viewer stuff
   Gluvi::camera = &cam;

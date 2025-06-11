@@ -29,7 +29,7 @@
 // IT_APIC: affine particle-in-cell (APIC)
 // IT_AFLIP: affine fluid-implicit-particle (AFLIP)
 // IT_ASFLIP: affine separable fluid-implicit-particle (ASFLIP)
-const FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_FLIP;
+FluidSim::INTEGRATOR_TYPE integration_scheme = FluidSim::IT_FLIP;
 
 // Change here to try different order for velocity evaluation from grid,
 // options:
@@ -1492,7 +1492,6 @@ void FluidSim::init_random_particles() {
 }
 
 void FluidSim::init_random_particles_2() {
-  T_ = _INIT_TEMP;
   int num_particle = ni_ * nj_;
   for (int i = 0; i < ni_; ++i) {
     for (int j = 0; j < nj_; ++j) {
@@ -2001,8 +2000,28 @@ void FluidSim::render2() {
   }
 
 void FluidSim::renderImGuiSidebar() {
+  // 获取主视口信息
+  ImGuiViewport* viewport = ImGui::GetMainViewport();
+  float sidebar_width = 340.0f;  // 你可以根据需要调整宽度
+  ImVec2 sidebar_pos = ImVec2(viewport->Pos.x + viewport->Size.x - sidebar_width, viewport->Pos.y);
+  ImVec2 sidebar_size = ImVec2(sidebar_width, viewport->Size.y - 28.0f);  // 28为状态栏高度
+
+  // 设置侧边栏位置和大小
+  ImGui::SetNextWindowPos(sidebar_pos, ImGuiCond_Always);
+  ImGui::SetNextWindowSize(sidebar_size, ImGuiCond_Always);
+
+  // 只允许水平调整宽度
+  ImGuiWindowFlags flags =
+      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings;
+
+  // 允许水平调整宽度
+  // ImGui::PushStyleVar(ImGuiStyleVar_ResizeGripSize, 16.0f);
+  ImGui::Begin("控制栏", nullptr, flags);
+
+  // 允许用户拖动右侧边界调整宽度
+  ImGui::SetWindowSize(ImVec2(ImGui::GetWindowWidth(), sidebar_size.y), ImGuiCond_Always);
+
   // ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-  ImGui::Begin("控制栏", nullptr,  ImGuiWindowFlags_NoCollapse);
 
   // ImGui::SetNextWindowSize(, (GLsizei)io.DisplaySize.y), ImGuiCond_Always);
   
@@ -2065,9 +2084,21 @@ void FluidSim::renderImGuiSidebar() {
       }
 
       ImGui::Separator();
-      // 可选：显示当前状态
-      // ImGui::Text("状态： %s", is_paused ? "已暂停" : "运行中");
-      // ImGui::Text("状态： %s", is_paused ? "已暂停" : "运行中");
+      // dropbox控制积分方式
+      ImGui::Text("积分方式选择");
+      // const char* integration_modes[] = {"FLIP", "APIC", "RPIC"};
+      const char* integration_modes[] = {"FLIP"};
+      static int current_integration_mode = 0;  // 默认选择FLIP
+      ImGui::Combo("积分方式", &current_integration_mode, integration_modes, IM_ARRAYSIZE(integration_modes));
+      // 根据选择设置积分方式
+      if (current_integration_mode == 0) {
+        integration_scheme = IT_FLIP;
+      } /*else if (current_integration_mode == 1) {
+        integration_scheme = IT_APIC;
+      } else if (current_integration_mode == 2) {
+        integration_scheme = IT_RPIC;
+      }*/
+      ImGui::Separator();
       // 控制渲染选项
       ImGui::Checkbox("绘制网格", &draw_grid_);
       ImGui::Checkbox("绘制速度向量", &draw_velocities_);
