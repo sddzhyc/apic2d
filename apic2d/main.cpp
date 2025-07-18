@@ -9,7 +9,7 @@
 #include "array2_utils.h"
 #include "fluidsim.h"
 
-// #define RENDER
+// #define RENDER // Uncomment this line to use the RenderWidget for rendering
 
 #ifdef RENDER
 #include "RenderWidget.h"
