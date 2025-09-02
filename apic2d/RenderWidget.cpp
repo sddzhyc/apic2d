@@ -295,7 +295,6 @@ void RenderWidget::DrawImGuiSidebar() {
   ImGui::SetNextWindowPos(ImVec2(windowWidth - sidebarWidth, 0), ImGuiCond_Always);
   ImGui::SetNextWindowSize(ImVec2(sidebarWidth, windowHeight), ImGuiCond_Always);
 
-  //ImGui::Begin("Control Panel", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
   // 开始绘制窗口（禁用滚动条和调整大小）
   ImGui::Begin("Control Panel", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
   // 添加按钮
@@ -317,8 +316,6 @@ void RenderWidget::DrawImGuiSidebar() {
   glDisable(GL_DEPTH_TEST);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  /*ImVec2 display_size = ImGui::GetIO().DisplaySize;
-  glViewport(0, 0, (GLsizei)display_size.x, (GLsizei)display_size.y);*/
   glViewport(0, 0, windowWidth, windowHeight);
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
   glfwSwapBuffers(mWindow);

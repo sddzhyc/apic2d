@@ -1,5 +1,3 @@
-
-// #define _INIT_TEMP 370.0f
 #define _INIT_TEMP 363.0f
 #ifdef WIN32
 #define NOMINMAX
@@ -49,7 +47,7 @@ const FluidSim::VELOCITY_ORDER velocity_order = FluidSim::VO_EULER;
 const FluidSim::INTERPOLATION_ORDER interpolation_order = FluidSim::IO_LINEAR;
 
 const scalar lagrangian_ratio = 0.97f;
-// const scalar lagrangian_ratio = 1.0f;
+
 const int particle_correction_step = 1;
 
 // whether collision is resolved with another pass on each particle (instead of
@@ -332,8 +330,7 @@ void FluidSim::add_force(scalar dt) {
   // gravity
   for (int j = 0; j < nj_ + 1; ++j) {
     for (int i = 0; i < ni_; ++i) {
-      v_(i, j) += -9.810 * dt; //减少重力加速度？
-      // TODO:是否需要为气体粒子设置不同的重力加速度？
+      v_(i, j) += -9.810 * dt;
       v_a_(i, j) += -9.810 * dt;  
     }
   }
@@ -1054,11 +1051,6 @@ void FluidSim::solve_pressure(scalar dt) {
     }
   });
 
-  /*if (outframe_ == 10 ) {
-    output_matrix_and_rhs_to_csv("D:/FluidSimulator/new_apic2d/matrix_" + std::to_string(outframe_) + ".csv",
-                                 "D:/FluidSimulator/new_apic2d/rhs_" + std::to_string(outframe_) + ".csv");
-  }*/
-
   // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
   scalar residual;
   int iterations;
@@ -1112,8 +1104,6 @@ void FluidSim::solve_pressure(scalar dt) {
 
 
 void FluidSim::solve_pressure_with_air(scalar dt) {
-  // This linear system could be simplified, but I've left it as is for clarity
-  // and consistency with the standard naive discretization
   int system_size = ni_ * nj_;
   if (rhs_.size() != system_size) {
     rhs_.resize(system_size);
@@ -1128,10 +1118,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       int index = i + ni_ * j;
       rhs_[index] = 0;
       pressure_[index] = 0;
-
-      // scalar gema = .0f;
-      //scalar gema = 7.3f;  // γ for water and air at normal conditions is approximately 0.073J/m^2
-      
       // float centre_phi = liquid_phi_(i, j);
       float centre_phi = merged_phi_(i, j);
       float right_phi = merged_phi_(i + 1, j);
@@ -1158,11 +1144,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           }
         } else {  // 既无气体也无液体的真空单元格单独处理
           matrix_.add_to_element(index, index, term);
-          //float term = u_weights_(i + 1, j) * dt / sqr(dx_);
-          //// float theta = fraction_inside(centre_phi, right_phi);                                                          // theta 是什么？
-          //if (theta < 0.01) theta = 0.01;
-          //matrix_.add_to_element(index, index, term / theta);  
-          // rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_;  
         }
         float face_frac = compute_face_fraction(centre_phi, right_phi);
         rhs_[index] -= u_weights_(i + 1, j) * (face_frac * u_(i + 1, j) + (1.0f - face_frac) * u_a_(i + 1, j)) / dx_;  // 交错网格，(i, j)就是 (i - 1/2, j)
@@ -1182,9 +1163,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           }
         } else {
           matrix_.add_to_element(index, index, term);
-          /*float term = u_weights_(i + 1, j) * dt / sqr(dx_);
-          if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, term / theta);*/  
         }
 
         face_frac = compute_face_fraction(centre_phi, left_phi);
@@ -1207,9 +1185,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         } else {
           matrix_.add_to_element(index, index, term);
         }
-        /*if (i == 41 && j == 10) {
-          std::cout << "i: " << i << ", j: " << j << ", term: " << term << ", rho_inter: " << rho_inter << std::endl;
-        }*/
+
         face_frac = compute_face_fraction(centre_phi, top_phi);
         rhs_[index] -= v_weights_(i, j + 1) * (face_frac * v_(i, j + 1) / dx_ + (1.0f - face_frac) * v_a_(i, j + 1) / dx_);
         
@@ -1217,9 +1193,7 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
         theta = fraction_inside(centre_phi, bot_phi);
         rho_inter = rho_ * theta + (1 - theta) * rho_air_;
         term = v_weights_(i, j) * dt / sqr(dx_) / rho_inter;
-        /*if (i == 41 && j == 11) {
-          std::cout << "i: " << i << ", j: " << j << ", term: " << term << ", rho_inter: " << rho_inter << std::endl;
-        }*/
+
         if (liquid_phi_(i, j - 1) < 0 || air_phi_(i, j - 1) < 0) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index - ni_, -term);
@@ -1230,9 +1204,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           }
         } else {
           matrix_.add_to_element(index, index, term);
-          /*float term = v_weights_(i, j) * dt / sqr(dx_);
-          if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, term / theta);*/
         }
 
         face_frac = compute_face_fraction(centre_phi, bot_phi);
@@ -1274,7 +1245,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
           }
           if (face_frac < 1) {
             u_a_(i, j) -= dt * (pressure_[index] - pressure_[index - 1]) / dx_ / rho_inter;
-            // 需要增加u_a_valid_吗？
           }
         } else {
           u_(i, j) = 0;
@@ -1286,18 +1256,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
       for (int i = 0; i < v_.ni; ++i) {
         int index = i + j * ni_;
         if (v_weights_(i, j) > 0) {
-          /*if (liquid_phi_(i, j) < 0 || liquid_phi_(i, j - 1) < 0) {
-            float theta = 1;
-            if (liquid_phi_(i, j) >= 0 || liquid_phi_(i, j - 1) >= 0) theta = fraction_inside(liquid_phi_(i, j - 1), liquid_phi_(i, j));
-            if (theta < 0.01) theta = 0.01;
-
-            float rho_inter = rho_ * theta + (1.0f - theta) * rho_air_;
-            v_(i, j) -= dt * (pressure_[index] - pressure_[index - ni_]) / dx_ / rho_inter;
-            // v_(i, j) -= dt * (pressure_[index] - pressure_[index - ni_]) / dx_ / theta;
-            v_valid_(i, j) = 1;
-          } else {
-            v_valid_(i, j) = 0;
-          }*/ 
           float theta = fraction_inside(merged_phi_(i, j - 1), merged_phi_(i, j));
           float face_frac = compute_face_fraction(merged_phi_(i, j - 1), merged_phi_(i, j));
           float rho_inter = rho_ * theta + (1.0f - theta) * rho_air_;
@@ -1318,8 +1276,6 @@ void FluidSim::solve_pressure_with_air(scalar dt) {
 }
 
 void FluidSim::solve_pressure_with_rho(scalar dt) {
-  // This linear system could be simplified, but I've left it as is for clarity
-  // and consistency with the standard naive discretization
   int system_size = ni_ * nj_;
   if (rhs_.size() != system_size) {
     rhs_.resize(system_size);
@@ -1343,10 +1299,9 @@ void FluidSim::solve_pressure_with_rho(scalar dt) {
           matrix_.add_to_element(index, index, term);
           matrix_.add_to_element(index, index + 1, -term);
         } else {  // liquid_phi_ >=0 时：邻居单元格为空气或固体边界时，其对应的参数(index, index + 1)的系数变化量为0
-          float theta = fraction_inside(centre_phi, right_phi);  // theta 是什么？
+          float theta = fraction_inside(centre_phi, right_phi); 
           if (theta < 0.01) theta = 0.01;
-          matrix_.add_to_element(index, index, term / theta);  // TODO:theta是什么？
-                                                               // theta 无穷大时，系数变化量为0，对应邻居单元格为固体边界
+          matrix_.add_to_element(index, index, term / theta); 
         }  // theta = 1时，系数变化量为原值，对应邻居单元格为空气
         rhs_[index] -= u_weights_(i + 1, j) * u_(i + 1, j) / dx_;  // 交错网格，(i, j)就是 (i - 1/2, j)
                                                                    // u_weights_(i, j) = 0时，左邻单元格是固体，该邻居单元格边上的速度项为0
@@ -1391,11 +1346,6 @@ void FluidSim::solve_pressure_with_rho(scalar dt) {
       }
     }
   });
-
-  /*if (outframe_ == 10 ) {
-    output_matrix_and_rhs_to_csv("D:/FluidSimulator/new_apic2d/matrix_" + std::to_string(outframe_) + ".csv",
-                                 "D:/FluidSimulator/new_apic2d/rhs_" + std::to_string(outframe_) + ".csv");
-  }*/
 
   // Solve the system using Robert Bridson's incomplete Cholesky PCG solver
   scalar residual;
@@ -1485,7 +1435,6 @@ void FluidSim::init_random_particles() {
         scalar phi = solid_distance(pt);
         // 用emplace_back调用了Particle的构造函数
         if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s(.0f, .0f), dx_ / sqrt(2.0), rho_, T_, Particle::PT_LIQUID); 
-        //if (phi > dx_ * ni_ / 5) particles_.emplace_back(pt, Vector2s::Zero(), dx_ / sqrt(2.0), rho_, T_); 
       }
     }
   }
@@ -2002,7 +1951,7 @@ void FluidSim::render2() {
 void FluidSim::renderImGuiSidebar() {
   // 获取主视口信息
   ImGuiViewport* viewport = ImGui::GetMainViewport();
-  float sidebar_width = 340.0f;  // 你可以根据需要调整宽度
+  float sidebar_width = 340.0f;  // 根据需要调整宽度
   ImVec2 sidebar_pos = ImVec2(viewport->Pos.x + viewport->Size.x - sidebar_width, viewport->Pos.y);
   ImVec2 sidebar_size = ImVec2(sidebar_width, viewport->Size.y - 28.0f);  // 28为状态栏高度
 
@@ -2021,10 +1970,6 @@ void FluidSim::renderImGuiSidebar() {
   // 允许用户拖动右侧边界调整宽度
   ImGui::SetWindowSize(ImVec2(ImGui::GetWindowWidth(), sidebar_size.y), ImGuiCond_Always);
 
-  // ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-
-  // ImGui::SetNextWindowSize(, (GLsizei)io.DisplaySize.y), ImGuiCond_Always);
-  
       if (ImGui::Button(is_paused ? "继续" : "暂停")) {
             is_paused = !is_paused;
           }
@@ -2037,7 +1982,6 @@ void FluidSim::renderImGuiSidebar() {
         outframe_ = 0;
       }
       // 初始场景选择
-      //const char* init_modes[] = {"场景1：全液体粒子情况", "场景2：全气体粒子情况", "场景3：静止液体", "场景4：中心气泡"};
       const char* init_modes[] = {"场景1：全液体粒子情况", "场景2：静止液体" , "场景3：中心气泡"};
       ImGui::Text("初始场景选择");
       ImGui::Combo("初始场景", &init_type_, init_modes, IM_ARRAYSIZE(init_modes));
@@ -2058,8 +2002,6 @@ void FluidSim::renderImGuiSidebar() {
         } else {
           ImGui::Text("未选择文件夹");
         }
-        // folderPath = savePath_.c_str();  // 更新输入框显示的路径（错误：不能将const char*赋值给char数组）
-        // 正确做法：将savePath_内容拷贝到folderPath
         //字符串转utf8格式
         strncpy(folderPath, savePath_.c_str(), sizeof(folderPath) - 1);
         folderPath[sizeof(folderPath) - 1] = '\0';  // 确保字符串以 null 结尾
@@ -2124,7 +2066,6 @@ void FluidSim::renderImGuiSidebar() {
       /* static float min_temp = 360.0f, max_temp = 375.0f;
       ImGui::SliderFloat("Min Temp", &min_temp, 300.0f, 400.0f);
       ImGui::SliderFloat("Max Temp", &max_temp, 300.0f, 400.0f); */
-
       // 打印粒子数量
       // ImGui::Text("模拟粒子数量: %zu", particles_.size());
 
@@ -2139,37 +2080,6 @@ void FluidSim::renderImGuiSidebar() {
       ImGui::SliderFloat("温度扩散常数", &D_, 0.0f, 20.0f, "%.2f");
       ImGui::Separator();  // 如需继续分割
       ImGui::End();
-  //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  // 清除颜色和深度缓冲区
-  // glPushMatrix();
-  // 全局变量存储参数（或封装在类中）
-  /* static float g_Scale = 1.0f;
-  static bool g_EnableEffect = false;
-  static glm::vec3 g_Color(1.0f, 1.0f, 1.0f);
-  // 获取窗口尺寸（使用freeglut函数）
-  int windowWidth = glutGet(GLUT_WINDOW_WIDTH);
-  int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);
-  std::cout << "ImGui::GetIO().DisplaySize.x: " << ImGui::GetIO().DisplaySize.x << ", ImGui::GetIO().DisplaySize.y: " << ImGui::GetIO().DisplaySize.y
-            << std::endl;// 该接口无法获取窗口大小，返回-1
-  // 渲染 ImGui 前重置视口到全窗口
-  //glViewport(0, 0, windowWidth, windowHeight);
-  // 设置侧边栏位置和大小（右侧 20%）
-  ImGui::SetNextWindowPos(ImVec2(windowWidth * 0.8f, 0), ImGuiCond_Always);
-  ImGui::SetNextWindowSize(ImVec2(windowWidth * 0.2f, windowHeight), ImGuiCond_Always);
-  // 开始绘制窗口（禁用滚动条和调整大小）
-  ImGui::Begin("Control Panel", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
-  // 添加按钮
-  if (ImGui::Button("Reset Parameters")) {
-    g_Scale = 1.0f;
-    g_EnableEffect = false;
-    g_Color = glm::vec3(1.0f);
-  }
-  // 添加滑动条
-  ImGui::SliderFloat("Scale", &g_Scale, 0.1f, 2.0f);
-  ImGui::Checkbox("Enable Effect", &g_EnableEffect);
-  // 颜色选择器
-  ImGui::ColorEdit3("Color", &g_Color[0]);
-  ImGui::End();
-  */
 }
 
 void FluidSim::renderImGuiStatusBar() {
@@ -2202,24 +2112,6 @@ void FluidSim::renderImGuiStatusBar() {
   ImGui::Text("网格大小: %d x %d", ni_, nj_);
   
   ImGui::End();
-  /* 
-  ImGui::SetNextWindowPos(ImVec2(0, ImGui::GetIO().DisplaySize.y - 30), ImGuiCond_Always);
-  ImGui::SetNextWindowSize(ImVec2(ImGui::GetIO().DisplaySize.x, 30), ImGuiCond_Always);
-  ImGui::Begin("Status Bar", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoTitleBar);
-
-  // 显示当前帧数
-  ImGui::Text("帧数: %d", outframe_);
-
-
-  // 显示当前温度范围
-  scalar min_temp = std::numeric_limits<scalar>::max();
-  scalar max_temp = std::numeric_limits<scalar>::lowest();
-  for (const Particle& p : particles_) {
-    if (p.temp_ < min_temp) min_temp = p.temp_;
-    if (p.temp_ > max_temp) max_temp = p.temp_;
-  }
-  ImGui::Text("温度范围: %.2f K - %.2f K", min_temp, max_temp);
-  ImGui::End();*/
 }
 
 FluidSim::Boundary::Boundary(const Vector2s& center, const Vector2s& parameter, BOUNDARY_TYPE type, bool inside)
@@ -2259,7 +2151,6 @@ void extrapolate(Array2s& grid, Array2s& old_grid, const Array2s& grid_weight, c
   Array2s* pgrids[] = {&grid, &old_grid};
   Array2c* pvalids[] = {&valid, &old_valid_};
 
-  // 每次使用valid_前会重新赋值？
   for (int j = 1; j < grid.nj - 1; ++j) {
     for (int i = 1; i < grid.ni - 1; ++i) {
       valid(i, j) = grid_weight(i, j) > 0 && (grid_liquid_weight(i, j) < 0 || grid_liquid_weight(i + offset(0), j + offset(1)) < 0);
@@ -2322,7 +2213,9 @@ void extrapolate(Array2s& grid, Array2s& old_grid, const Array2s& grid_weight, c
   }
 }
 
-
+/*!
+  \brief    Tool function for solve_compressible_density
+*/
 scalar FluidSim::compute_coef_A(const scalar& rho) { 
 	scalar background_T = 300.0f;
 	scalar denominator = (b * b + 2.0f * rho * b - rho * rho);
@@ -3140,7 +3033,6 @@ void FluidSim::output_matrix_and_rhs_to_csv(const std::string& matrix_file, cons
     std::cerr << "Unable to open file " << rhs_file << std::endl;
   }
 }
-
 
 bool FluidSim::is_symmetric(const robertbridson::SparseMatrix<scalar>& matrix) {
   int n = matrix.n;

@@ -89,9 +89,7 @@ void DragFunc(int x, int y) {
 
 // Forward declarations of helper functions
 void MainLoopStep();
-// Our state
-static bool show_demo_window = false;
-static bool show_another_window = false;
+
 static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 void display_new() {
@@ -101,46 +99,12 @@ void display_new() {
   ImGui_ImplGLUT_NewFrame();
   ImGui::NewFrame();
   ImGuiIO& io = ImGui::GetIO();
-  // 3. Show another simple window.
-  if (show_another_window) {
-    ImGui::Begin("Another Window",
-                 &show_another_window);  // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-    ImGui::Text("Hello from another window!");
-    if (ImGui::Button("Close Me")) show_another_window = false;
-    ImGui::End();
-  }
-
-    // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
-  /*{
-    static float f = 0.0f;
-    static int counter = 0;
-
-    ImGui::Begin("Hello, world!");  // Create a window called "Hello, world!" and append into it.
-
-    ImGui::Text("This is some useful text.");           // Display some text (you can use a format strings too)
-    ImGui::Checkbox("Demo Window", &show_demo_window);  // Edit bools storing our window open/close state
-    ImGui::Checkbox("Another Window", &show_another_window);
-
-    ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
-    ImGui::ColorEdit3("clear color", (float*)&clear_color);  // Edit 3 floats representing a color
-
-    if (ImGui::Button("Button"))  // Buttons return true when clicked (most widgets return true when edited/activated)
-      counter++;
-    ImGui::SameLine();
-    ImGui::Text("counter = %d", counter);
-
-    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-    ImGui::End();
-  }*/ 
 
   sim.renderImGuiStatusBar();
   sim.renderImGuiSidebar();
   // Rendering
   ImGui::Render();
   glViewport(0, 0, (GLsizei)io.DisplaySize.x, (GLsizei)io.DisplaySize.y);
-
-  /*glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
-  glClear(GL_COLOR_BUFFER_BIT);*/
   // glUseProgram(0); // You may want this if using this code in an OpenGL 3+ context where shaders may be bound, but prefer using the GL3+ code.
   ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
    glutSwapBuffers();
@@ -153,42 +117,6 @@ void MainLoopStep() {
   ImGui_ImplGLUT_NewFrame();
   ImGui::NewFrame();
   ImGuiIO& io = ImGui::GetIO();
-
-  // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-  if (show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
-
-  // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
-  {
-    static float f = 0.0f;
-    static int counter = 0;
-
-    ImGui::Begin("Hello, world!");  // Create a window called "Hello, world!" and append into it.
-
-    ImGui::Text("This is some useful text.");           // Display some text (you can use a format strings too)
-    ImGui::Checkbox("Demo Window", &show_demo_window);  // Edit bools storing our window open/close state
-    ImGui::Checkbox("Another Window", &show_another_window);
-
-    ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
-    ImGui::ColorEdit3("clear color", (float*)&clear_color);  // Edit 3 floats representing a color
-
-    if (ImGui::Button("Button"))  // Buttons return true when clicked (most widgets return true when edited/activated)
-      counter++;
-    ImGui::SameLine();
-    ImGui::Text("counter = %d", counter);
-
-    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-    ImGui::End();
-  }
-
-  // 3. Show another simple window.
-  if (show_another_window) {
-    ImGui::Begin("Another Window",
-                 &show_another_window);  // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-    ImGui::Text("Hello from another window!");
-    if (ImGui::Button("Close Me")) show_another_window = false;
-    ImGui::End();
-  }
-
   // Rendering
   ImGui::Render();
   glViewport(0, 0, (GLsizei)io.DisplaySize.x, (GLsizei)io.DisplaySize.y);
@@ -208,10 +136,6 @@ int main(int argc, char **argv) {
   RenderWidget renderer;
   renderer.Init();
 
-  //Fluid2d::ParticalSystem ps;
-  //ps.SetContainerSize(glm::vec2(-1.0, -1.0), glm::vec2(2.0, 2.0));
-  //ps.AddFluidBlock(glm::vec2(-0.2, -0.2), glm::vec2(0.4, 0.4), glm::vec2(-2.0f, -10.0f), 0.01f * 0.7f);
-  //std::cout << "partical num = " << ps.mPositions.size() << std::endl;
 
   // Set up the simulation
   sim.initialize(o0, grid_width, grid_resolution, grid_resolution, 1.0);
@@ -250,9 +174,6 @@ int main(int argc, char **argv) {
 
         particlePositions.push_back(position);  
         particleDensities.push_back(density);
-        /*if (particle.x_[0] != 0) {
-          std::cout << "particle x = " << position[0] << ", y = " << position[1] << std::endl;
-        }*/
     }
     // 调用LoadVertexes_new方法  
     renderer.LoadVertexes_new(particlePositions, particleDensities);
@@ -263,21 +184,11 @@ int main(int argc, char **argv) {
 
   }
 #else
+  // Setup GLUT display function
   Gluvi::init("Basic Fluid Solver with Static Variational Boundaries", &argc, argv);
-  // Create GLUT window
-  //glutInit(&argc, argv);
 #ifdef __FREEGLUT_EXT_H__
   glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_GLUTMAINLOOP_RETURNS);
 #endif
-  //glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_MULTISAMPLE);
-  //glutInitWindowSize(1280, 720);
-  //glutCreateWindow("Dear ImGui GLUT+OpenGL2 Example");
-
-  // Setup GLUT display function
-  // We will also call ImGui_ImplGLUT_InstallFuncs() to get all the other functions installed for us,
-  // otherwise it is possible to install our own functions and call the imgui_impl_glut.h functions ourselves.
-  //glutDisplayFunc(MainLoopStep);
-  //glutDisplayFunc(display_new);
   // Setup Dear ImGui context 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
@@ -288,18 +199,16 @@ int main(int argc, char **argv) {
   // Setup Dear ImGui style
   ImGui::StyleColorsDark();
   // ImGui::StyleColorsLight();
-
+  // 
   // Setup Platform/Renderer backends
   ImGui_ImplGLUT_Init();
   ImGui_ImplOpenGL2_Init();
-
   // Install GLUT handlers (glutReshapeFunc(), glutMotionFunc(), glutPassiveMotionFunc(), glutMouseFunc(), glutKeyboardFunc() etc.)
   // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
   // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
   // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
   // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
   ImGui_ImplGLUT_InstallFuncs();
-
   // Load Fonts
   // - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
   // - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
@@ -310,27 +219,8 @@ int main(int argc, char **argv) {
   // - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
   // - Read 'docs/FONTS.md' for more instructions and details.
   // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
-   //io.Fonts->AddFontDefault();
-   //io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\msyh.ttc", 18.0f);
-   //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
-   //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
-   //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
-   //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
-  // 推荐：先移除默认字体
   io.Fonts->Clear();
-  // 加载微软雅黑，指定中文字符集
-  //static const ImWchar chinese_ranges[] = {
-  //    0x0020, 0x00FF,  // 基本拉丁字符
-  //    0x2000, 0x206F,  // 常用标点
-  //    0x3000, 0x30FF,  // 中文标点、日文片假名
-  //    0x3400, 0x4DBF,  // 扩展A
-  //    0x4E00, 0x9FFF,  // 常用汉字
-  //    0xF900, 0xFAFF,  // 兼容汉字
-  //    0,
-  //};
-
   float dpi_scale = GetDPIScale();
-
   ImFont* font = io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\msyh.ttc",  // 字体路径
                                               18.0f,                           // 字号
                                               nullptr,                         // 字体配置
@@ -369,20 +259,6 @@ int main(int argc, char **argv) {
 }
 
 void display(void) { sim.render(); }
-  /*void display(void) {
-  // 清屏
-  // glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  sim.render();
-  // 开始 ImGui 帧
-  //ImGui_ImplGLUT_NewFrame();  // 必须在ImGui::NewFrame前调用
-  //ImGui_ImplOpenGL2_NewFrame();
-  ImGui_ImplOpenGL2_NewFrame();
-  ImGui::NewFrame();
-  sim.renderImGuiSidebar();
-  ImGui::Render();
-  ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
-  // glutSwapBuffers();  // 只在这里交换缓冲
-}*/ 
 
 #ifdef RENDER
 #else

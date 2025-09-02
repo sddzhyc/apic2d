@@ -718,11 +718,6 @@ void init(const char *windowtitle, int *argc, char **argv) {
   glutCreateWindow(windowtitle);
 
   // 设置 FreeGLUT 回调（覆盖原有事件处理）
-  //glutKeyboardFunc(ImGui_ImplGLUT_KeyboardFunc);  // 传递键盘事件给 ImGui
-  //glutSpecialFunc(ImGui_ImplGLUT_SpecialFunc);
-  //glutMotionFunc(ImGui_ImplGLUT_MotionFunc);
-  //glutPassiveMotionFunc(ImGui_ImplGLUT_MotionFunc);
-  //glutMouseFunc(ImGui_ImplGLUT_MouseFunc);  // 传递鼠标事件给 ImGui
   glutReshapeFunc(gluviReshape);
   glutDisplayFunc(gluviDisplay_new);
   glutKeyboardFunc(gluviKeyboard);
