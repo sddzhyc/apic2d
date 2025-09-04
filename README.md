@@ -64,3 +64,9 @@ Press `<shift>` with mouse buttons to move the camera.
 1. Pan: `<shift>+<LMB>`
 2. Zoom-in (drag to mark the region): `<shift>+<MMB>`
 3. Zoom-out: `<shift>+<RMB>`
+
+---------------
+
+新特性添加：
+1. 添加了基于imgui的GUI界面
+2. 
